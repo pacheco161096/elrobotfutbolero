@@ -7,7 +7,7 @@ import { expressionFile, pickExpression } from "@/lib/engines/copy";
 import { runPipeline } from "@/lib/engines/pipeline";
 import { storyKeyFor } from "@/lib/engines/story";
 import { classifyTruth } from "@/lib/engines/truth";
-import { fetchFixtures, mapFixture, mapLiveEvent } from "@/lib/integrations/api-football";
+import { fetchFixtures, fetchLiveFixtures, liveFixturesUrl, mapFixture, mapLiveEvent } from "@/lib/integrations/api-football";
 import { presentMatch } from "@/lib/matches/present";
 import { FACEBOOK_BLACK_TEXT_PRESET, publishWithZernio, zernioPostBody } from "@/lib/integrations/gates";
 import { liveWorkerTick } from "@/lib/worker/tick";
@@ -270,6 +270,34 @@ describe("api football", () => {
     const call = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(String(call[0])).toContain("league=262");
     expect(call[1].headers).toMatchObject({ "x-apisports-key": "llave-de-prueba" });
+  });
+
+  it("el vivo pide la liga con live=all y descarta otras ligas", async () => {
+    expect(liveFixturesUrl(262, "v3.football.api-sports.io", 2026)).toBe(
+      "https://v3.football.api-sports.io/fixtures?league=262&season=2026&live=all",
+    );
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      response: [
+        {
+          fixture: { id: 1, status: { short: "1H" } },
+          league: { id: 39, name: "Premier League" },
+          teams: { home: { name: "A" }, away: { name: "B" } },
+          goals: { home: 1, away: 0 },
+        },
+        {
+          fixture: { id: 2, status: { short: "1H" } },
+          league: { id: 262, name: "Liga MX" },
+          teams: { home: { name: "León" }, away: { name: "Juárez" } },
+          goals: { home: 0, away: 0 },
+        },
+      ],
+    })));
+    const live = await fetchLiveFixtures({ key: "llave", season: 2026 }, fetchImpl);
+    const call = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(String(call[0])).toContain("live=all");
+    expect(String(call[0])).not.toContain("live=262");
+    expect(live.error).toBeNull();
+    expect(live.matches.map((match) => match.fixtureId)).toEqual(["2"]);
   });
 });
 

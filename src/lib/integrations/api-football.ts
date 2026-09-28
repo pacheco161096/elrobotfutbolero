@@ -18,7 +18,7 @@ export type StoredMatch = {
 
 type FixturePayload = {
   fixture?: { id?: number; date?: string; status?: { short?: string; elapsed?: number | null } };
-  league?: { name?: string; season?: number };
+  league?: { id?: number; name?: string; season?: number };
   teams?: { home?: { name?: string }; away?: { name?: string } };
   goals?: { home?: number | null; away?: number | null };
 };
@@ -73,8 +73,17 @@ export async function fetchFixtures(
   return readFixtures(fixturesUrl(input, input.host), input.key, fetchImpl);
 }
 
-export function liveFixturesUrl(leagueId = LIGA_MX_LEAGUE_ID, host = API_FOOTBALL_HOST): string {
-  return `https://${host}/fixtures?live=${leagueId}`;
+export function liveFixturesUrl(
+  leagueId = LIGA_MX_LEAGUE_ID,
+  host = API_FOOTBALL_HOST,
+  season = new Date().getUTCFullYear(),
+): string {
+  const params = new URLSearchParams({
+    league: String(leagueId),
+    season: String(season),
+    live: "all",
+  });
+  return `https://${host}/fixtures?${params.toString()}`;
 }
 
 export type StandingRow = {
@@ -139,10 +148,18 @@ export async function fetchStandings(
 }
 
 export async function fetchLiveFixtures(
-  input: { key: string; host?: string; leagueId?: number },
+  input: { key: string; host?: string; leagueId?: number; season?: number },
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ matches: StoredMatch[]; error: string | null }> {
-  return readFixtures(liveFixturesUrl(input.leagueId, input.host), input.key, fetchImpl);
+  const leagueId = input.leagueId ?? LIGA_MX_LEAGUE_ID;
+  const result = await readFixtures(liveFixturesUrl(leagueId, input.host, input.season), input.key, fetchImpl);
+  return {
+    ...result,
+    matches: result.matches.filter((match) => {
+      const id = (match.raw as FixturePayload).league?.id;
+      return id == null || id === leagueId;
+    }),
+  };
 }
 
 export type LiveEventInput = {
