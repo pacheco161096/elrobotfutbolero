@@ -3,10 +3,10 @@ import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import { mentionsMatch } from "@/lib/engines/context";
 import { pickExpression } from "@/lib/engines/copy";
 import { memeScene } from "@/lib/engines/image-route";
-import { contradictsScore, halftimeText, pulseLine, quietSlot, readPulse } from "@/lib/engines/match-pulse";
+import { contradictsScore, halftimeText, pulseSituation, quietSlot, readPulse } from "@/lib/engines/match-pulse";
 import { brightDataMissing, facebookPageUrls, pollSocialSearch, triggerSocialSearch } from "@/lib/integrations/bright-data";
 import { fetchMatchSides } from "@/lib/integrations/fixture-stats";
-import { reinterpretPage } from "@/lib/integrations/openai-voice";
+import { reinterpretPage, writeMomentLine } from "@/lib/integrations/openai-voice";
 import { generateRobotImage } from "@/lib/integrations/robot-image";
 
 const RELEVANT = ["GOAL", "RED_CARD", "PENALTY", "MISSED_PENALTY", "VAR"];
@@ -25,6 +25,16 @@ async function openClient(databaseUrl: string): Promise<pg.Client> {
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
   return client;
+}
+
+async function recentLines(client: pg.Client): Promise<string[]> {
+  const result = await client.query<{ body: string }>(
+    `SELECT body FROM posts
+     WHERE body IS NOT NULL AND kind IN ('PULSE', 'HALFTIME', 'KICKOFF', 'FLASH')
+     ORDER BY created_at DESC
+     LIMIT 12`,
+  );
+  return result.rows.map((row) => row.body);
 }
 
 async function hasRelevantEvent(client: pg.Client, fixtureId: string): Promise<boolean> {
@@ -73,10 +83,6 @@ export async function runHalftimePosts(env: Record<string, string | undefined> =
          AND NOT EXISTS (SELECT 1 FROM posts p WHERE p.idempotency_key = 'halftime:' || matches.fixture_id)`,
     );
     for (const match of matches.rows) {
-      const used = await client.query<{ body: string }>(
-        `SELECT body FROM posts WHERE idempotency_key LIKE $1 AND body IS NOT NULL`,
-        [`pulse:${match.fixture_id}:%`],
-      );
       const sides = await fetchMatchSides({
         fixtureId: match.fixture_id,
         home: match.home_team,
@@ -86,7 +92,22 @@ export async function runHalftimePosts(env: Record<string, string | undefined> =
       });
       if (!sides) continue;
       const kind = readPulse(sides.home, sides.away);
-      const line = kind ? pulseLine(kind, `${match.fixture_id}:ht`, used.rows.map((row) => row.body)) : null;
+      const line = kind
+        ? await writeMomentLine({
+            situation: pulseSituation({
+              home: match.home_team,
+              away: match.away_team,
+              minute: match.minute,
+              kind,
+              homeScore: match.home_score as number,
+              awayScore: match.away_score as number,
+              place: "medio",
+            }),
+            avoid: await recentLines(client),
+            minute: match.minute,
+          }, env)
+        : null;
+      if (kind && !line) continue;
       created += await insertPost(client, {
         kind: "HALFTIME",
         key: `halftime:${match.fixture_id}`,
@@ -210,9 +231,22 @@ export async function runQuietPosts(env: Record<string, string | undefined> = pr
         host: env.API_FOOTBALL_HOST,
       });
       const kind = sides ? readPulse(sides.home, sides.away) : null;
-      if (!kind) continue;
+      if (!kind || match.home_score == null || match.away_score == null) continue;
       if (slot === 1) await pageQuote(client, match, env);
-      const line = pulseLine(kind, `${match.fixture_id}:${slot}`, posts.rows.map((row) => row.body));
+      const line = await writeMomentLine({
+        situation: pulseSituation({
+          home: match.home_team,
+          away: match.away_team,
+          minute: match.minute,
+          kind,
+          homeScore: match.home_score as number,
+          awayScore: match.away_score as number,
+          place: "pulso",
+        }),
+        avoid: await recentLines(client),
+        minute: match.minute,
+      }, env);
+      if (!line) continue;
       created += await insertPost(client, { kind: "PULSE", key: `pulse:${match.fixture_id}:${slot}`, body: line });
     }
   } finally {

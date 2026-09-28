@@ -1,4 +1,4 @@
-import { contradictsScore, halftimeText, pulseLine, quietSlot, readPulse } from "@/lib/engines/match-pulse";
+import { acceptMomentLine, contradictsScore, halftimeText, pulseLine, pulseSituation, quietSlot, readPulse } from "@/lib/engines/match-pulse";
 import { describe, expect, it } from "vitest";
 
 describe("lectura del partido", () => {
@@ -20,6 +20,26 @@ describe("lectura del partido", () => {
 
   it("si ya hay llegadas, no inventa una lectura", () => {
     expect(readPulse({ shotsOnTarget: 4, possession: 55 }, { shotsOnTarget: 3, possession: 45 })).toBeNull();
+  });
+
+  it("la frase del partido callado la tiene que escribir la voz, sin cifra y sin repetir", () => {
+    const situation = pulseSituation({
+      home: "Belgium",
+      away: "France",
+      minute: 70,
+      kind: "nadie_llega",
+      homeScore: 0,
+      awayScore: 0,
+      place: "pulso",
+    });
+    expect(situation).toContain("segundo tiempo");
+    expect(situation).toContain("no lo escribas");
+    expect(acceptMomentLine("Se están mirando y el arco descansa. 🤖", ["Nadie llega. Yo aquí gastando servidores. 🤖"], 70)).toBe(
+      "Se están mirando y el arco descansa. 🤖",
+    );
+    expect(acceptMomentLine("Nadie llega. Yo aquí gastando servidores. 🤖", ["Nadie llega. Yo aquí gastando servidores. 🤖"], 30)).toBeNull();
+    expect(acceptMomentLine("Van 0-0 y yo aquí.", [], 30)).toBeNull();
+    expect(acceptMomentLine("Apenas estaba calentando servidores. 🤖", [], 70)).toBeNull();
   });
 
   it("el chiste cambia de una publicación a otra", () => {

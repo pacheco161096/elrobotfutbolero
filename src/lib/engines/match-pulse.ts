@@ -36,6 +36,38 @@ function pickIndex(seed: string, length: number): number {
   return hash % length;
 }
 
+export function pulseSituation(input: {
+  home: string;
+  away: string;
+  minute: number | null;
+  kind: PulseKind;
+  homeScore: number;
+  awayScore: number;
+  place: "pulso" | "medio";
+}): string {
+  const clock = input.minute == null ? "sin minuto confirmado" : input.minute >= 90 ? "tiempo de compensación" : input.minute >= 46 ? "segundo tiempo" : "primer tiempo";
+  const when = input.minute == null ? clock : `${clock}, minuto ${input.minute}`;
+  const reading = input.kind === "nadie_llega"
+    ? "Ninguno de los dos está llegando con claridad al arco."
+    : "Un equipo tiene la pelota y no genera peligro.";
+  const place = input.place === "medio"
+    ? "Es el medio tiempo. El marcador ya va en otra línea. Esta línea es el remate, sin cifras."
+    : "Es un comentario del partido callado. Sin marcador y sin cifras.";
+  return `${input.home} contra ${input.away}. ${when}. El marcador real es ${input.homeScore}-${input.awayScore}; no lo escribas. ${reading} ${place}`;
+}
+
+export function acceptMomentLine(raw: string, avoid: string[], minute: number | null): string | null {
+  const line = raw.trim().replace(/^["“]|["”]$/g, "");
+  if (!line || /^nada\.?$/i.test(line) || line.includes("\n") || line.length > 220 || /\d/.test(line)) return null;
+  if (minute != null && minute >= 46 && /calentando|apenas estaba|ni se sentaban|minuto cero/i.test(line)) return null;
+  const spoken = line.toLowerCase();
+  if (avoid.some((item) => {
+    const used = item.toLowerCase();
+    return used.includes(spoken) || spoken.includes(used);
+  })) return null;
+  return line;
+}
+
 export function pulseLine(kind: PulseKind, seed: string, avoid: string[] = []): string {
   const pool = kind === "nadie_llega" ? NADIE_LLEGA : BALON_SIN_DANO;
   const start = pickIndex(seed, pool.length);
