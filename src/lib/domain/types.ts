@@ -84,6 +84,7 @@ export type IncomingEvent = {
   minute?: number;
   player?: string;
   team?: string;
+  detail?: string;
   homeTeam: string;
   awayTeam: string;
   homeScore?: number | null;

@@ -887,13 +887,17 @@ El Context Engine investiga:
 
 Su objetivo es responder:
 
-> ¿Existe información nueva que cambie o enriquezca la historia?
+> ¿Las páginas trajeron contexto del partido?
+
+No tiene que ser un dato nuevo del gol, de la tarjeta o del evento que acaba de salir. Sirve lo que las páginas publicaron sobre ese partido.
+
+Si no regresan nada del partido, no hay segundo post.
 
 ---
 
 # 30. CONTEXT ENGINE NO DEBE FORZAR UN SEGUNDO POST
 
-Si no encuentra nada nuevo:
+Si las páginas no regresan contexto del partido:
 
 ```text
 DISCARD
@@ -901,7 +905,7 @@ DISCARD
 
 No publicar simplemente para generar más contenido.
 
-Si encuentra información relevante:
+Si las páginas regresan contexto del partido:
 
 ```text
 UPDATE STORY
@@ -1209,7 +1213,7 @@ Reglas:
 
 ### Evento futbolístico real
 
-Preferir imagen real relevante cuando exista y pueda utilizarse adecuadamente.
+El Flash va sin imagen. La fotografía real se busca para el segundo post, cuando el contexto la tenga.
 
 ### BOT como protagonista
 
@@ -1224,6 +1228,18 @@ Puede utilizarse imagen generada por IA.
 Texto solamente.
 
 La imagen debe estar relacionada directamente con la publicación.
+
+### Flash
+
+El Flash va sin imagen. Puede llevar emojis. Siempre sale como texto con formato: una tarjeta editorial, con el dato en grande y legible. No sale como un párrafo suelto.
+
+Esa tarjeta la arma el Visual Engine. Zernio no la diseña. Zernio solo reparte a Facebook la pieza ya hecha.
+
+### Segundo post
+
+Ahí se busca la imagen, a partir del contexto de lo que se va a decir.
+
+Si existe una relacionada, entra en la publicación. Si no existe, el segundo post sale igual: solo texto, con formato. No se inventa la foto ni se usa una de otro tema.
 
 ---
 
@@ -1261,7 +1277,7 @@ Expresiones:
 
 # 42. PUBLICACIÓN
 
-Zernio funciona como capa de distribución.
+Zernio funciona como capa de distribución. No diseña la tarjeta ni busca la imagen. Recibe la pieza ya armada y la manda a Facebook.
 
 Flujo:
 

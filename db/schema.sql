@@ -183,10 +183,40 @@ CREATE TABLE IF NOT EXISTS control_flags (
   safe_mode boolean NOT NULL DEFAULT false,
   blocked_sources text[] NOT NULL DEFAULT '{}',
   blocked_topics text[] NOT NULL DEFAULT '{}',
+  blocked_words text[] NOT NULL DEFAULT '{}',
+  blocked_people text[] NOT NULL DEFAULT '{}',
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 INSERT INTO control_flags (id) VALUES (1) ON CONFLICT DO NOTHING;
+
+ALTER TABLE control_flags ADD COLUMN IF NOT EXISTS blocked_words text[] NOT NULL DEFAULT '{}';
+ALTER TABLE control_flags ADD COLUMN IF NOT EXISTS blocked_people text[] NOT NULL DEFAULT '{}';
+
+CREATE TABLE IF NOT EXISTS standings (
+  season int NOT NULL,
+  rank int NOT NULL,
+  team text NOT NULL,
+  played int,
+  won int,
+  draw int,
+  lost int,
+  goals_for int,
+  goals_against int,
+  points int,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (season, team)
+);
+
+CREATE TABLE IF NOT EXISTS ai_usage (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  area text NOT NULL,
+  model text NOT NULL,
+  prompt_tokens int NOT NULL DEFAULT 0,
+  completion_tokens int NOT NULL DEFAULT 0,
+  usd numeric(12, 6),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS blacklist_rules (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

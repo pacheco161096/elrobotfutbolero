@@ -77,6 +77,67 @@ export function liveFixturesUrl(leagueId = LIGA_MX_LEAGUE_ID, host = API_FOOTBAL
   return `https://${host}/fixtures?live=${leagueId}`;
 }
 
+export type StandingRow = {
+  season: number;
+  rank: number;
+  team: string;
+  played: number | null;
+  won: number | null;
+  draw: number | null;
+  lost: number | null;
+  goalsFor: number | null;
+  goalsAgainst: number | null;
+  points: number | null;
+};
+
+type StandingPayload = {
+  rank?: number;
+  points?: number;
+  team?: { name?: string };
+  all?: { played?: number; win?: number; draw?: number; lose?: number; goals?: { for?: number; against?: number } };
+};
+
+export function standingsUrl(season: number, leagueId = LIGA_MX_LEAGUE_ID, host = API_FOOTBALL_HOST): string {
+  return `https://${host}/standings?league=${leagueId}&season=${season}`;
+}
+
+export function mapStandings(payload: unknown, season: number): StandingRow[] {
+  const response = payload && typeof payload === "object" ? (payload as { response?: Array<{ league?: { standings?: StandingPayload[][] } }> }).response : undefined;
+  const groups = response?.[0]?.league?.standings ?? [];
+  const rows: StandingRow[] = [];
+  for (const group of groups) {
+    for (const item of group) {
+      const team = item.team?.name;
+      if (!team || item.rank == null) continue;
+      rows.push({
+        season,
+        rank: item.rank,
+        team,
+        played: item.all?.played ?? null,
+        won: item.all?.win ?? null,
+        draw: item.all?.draw ?? null,
+        lost: item.all?.lose ?? null,
+        goalsFor: item.all?.goals?.for ?? null,
+        goalsAgainst: item.all?.goals?.against ?? null,
+        points: item.points ?? null,
+      });
+    }
+  }
+  return rows.sort((left, right) => left.rank - right.rank);
+}
+
+export async function fetchStandings(
+  input: { season: number; key: string; host?: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ rows: StandingRow[]; error: string | null }> {
+  const response = await fetchImpl(standingsUrl(input.season, LIGA_MX_LEAGUE_ID, input.host), { headers: { "x-apisports-key": input.key } });
+  const body = (await response.json()) as { errors?: Record<string, string> | string[] };
+  const errors = body.errors;
+  const errorText = Array.isArray(errors) ? errors.join(" ") : errors ? Object.values(errors).join(" ") : "";
+  if (!response.ok || errorText) return { rows: [], error: errorText || `HTTP ${response.status}` };
+  return { rows: mapStandings(body, input.season), error: null };
+}
+
 export async function fetchLiveFixtures(
   input: { key: string; host?: string; leagueId?: number },
   fetchImpl: typeof fetch = fetch,
@@ -97,7 +158,7 @@ export type LiveEventInput = {
   detail?: string;
 };
 
-export function mapLiveEvent(event: LiveEventInput): { eventType: string; minute: number | null; player: string | null; team: string | null; idempotencyKey: string } | null {
+export function mapLiveEvent(event: LiveEventInput): { eventType: string; minute: number | null; player: string | null; team: string | null; detail: string | null; idempotencyKey: string } | null {
   const type = (event.type ?? "").toLowerCase();
   const detail = (event.detail ?? "").toLowerCase();
   let eventType: string | null = null;
@@ -112,5 +173,5 @@ export function mapLiveEvent(event: LiveEventInput): { eventType: string; minute
   const player = event.player?.name ?? null;
   const team = event.team?.name ?? null;
   const idempotencyKey = ["fx", event.fixtureId, eventType, minute ?? "x", player ?? "x", team ?? "x"].join(":");
-  return { eventType, minute, player, team, idempotencyKey };
+  return { eventType, minute, player, team, detail: event.detail ?? null, idempotencyKey };
 }

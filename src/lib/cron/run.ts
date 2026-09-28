@@ -2,7 +2,10 @@ import pg from "pg";
 import { assessSchedule, inconsistentFindings, type ScheduledFixture } from "@/lib/cron/assess";
 import { watchdogFindings, type MatchStatus, type WatchdogFinding } from "@/lib/engines/match-state";
 import { ingestPlayedEvents } from "@/lib/integrations/ingest-events";
-import { syncLigaMx } from "@/lib/integrations/sync-matches";
+import { publishReadyPosts, runPreMatchPosts } from "@/lib/integrations/publish";
+import { runSocialContext } from "@/lib/integrations/social-context";
+import { refreshOverrides } from "@/lib/control/overrides";
+import { syncLigaMx, syncStandings } from "@/lib/integrations/sync-matches";
 
 type Env = Record<string, string | undefined>;
 
@@ -42,11 +45,15 @@ async function loadSchedule(databaseUrl: string): Promise<ScheduledFixture[]> {
 
 export async function runSyncMatches(env: Env = process.env, now = new Date()) {
   const result = await syncLigaMx(env, now);
+  const table = await syncStandings(env, now);
   const databaseUrl = env.DATABASE_URL;
   if (databaseUrl) {
+    await refreshOverrides(databaseUrl);
     await writeLog(databaseUrl, result.error ? "error" : "info", "sync-matches", result.error ?? "Jornada sincronizada.", {
       saved: result.saved,
       window: result.window,
+      standings: table.saved,
+      standingsError: table.error,
     });
   }
   return result;
@@ -55,6 +62,7 @@ export async function runSyncMatches(env: Env = process.env, now = new Date()) {
 export async function runFootballEngine(env: Env = process.env, now = new Date()) {
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) return { preMatch: 0, refreshed: false, saved: 0, checked: 0, stored: 0, error: "Falta DATABASE_URL." };
+  await refreshOverrides(databaseUrl);
   const schedule = await loadSchedule(databaseUrl);
   const assessment = assessSchedule(schedule, now);
   if (!assessment.refresh) {
@@ -67,8 +75,10 @@ export async function runFootballEngine(env: Env = process.env, now = new Date()
           return result.rowCount ?? 0;
         })
       : 0;
-    await writeLog(databaseUrl, "info", "football-engine", "Nada en juego. No consulté API-Football.", { preMatch: updated });
-    return { preMatch: updated, refreshed: false, saved: 0, checked: 0, stored: 0, error: null };
+    const previa = await runPreMatchPosts(env, now);
+    const published = await publishReadyPosts(env);
+    await writeLog(databaseUrl, "info", "football-engine", "Nada en juego. No consulté API-Football.", { preMatch: updated, previa, published });
+    return { preMatch: updated, refreshed: false, saved: 0, checked: 0, stored: 0, previa, published, error: null };
   }
   const synced = await syncLigaMx(env, now);
   if (synced.error) {
@@ -76,12 +86,24 @@ export async function runFootballEngine(env: Env = process.env, now = new Date()
     return { preMatch: 0, refreshed: false, saved: 0, checked: 0, stored: 0, error: synced.error };
   }
   const events = await ingestPlayedEvents(env);
-  await writeLog(databaseUrl, "info", "football-engine", "Revisé los partidos que ya deberían haber empezado.", {
+  let context: Awaited<ReturnType<typeof runSocialContext>> = { status: "idle", checked: 0 };
+  try {
+    context = await runSocialContext(env, now);
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : "";
+    context = { status: "error", checked: 0, message: raw && !/postgres:|bearer|api_key/i.test(raw) ? raw : "Bright Data falló." };
+  }
+  const previa = await runPreMatchPosts(env, now);
+  const published = await publishReadyPosts(env);
+  await writeLog(databaseUrl, context.status === "error" ? "error" : "info", "football-engine", "Revisé los partidos que ya deberían haber empezado.", {
     saved: synced.saved,
     checked: events.checked,
     stored: events.stored,
+    context: context.status,
+    previa,
+    published,
   });
-  return { preMatch: 0, refreshed: true, saved: synced.saved, checked: events.checked, stored: events.stored, error: null };
+  return { preMatch: 0, refreshed: true, saved: synced.saved, checked: events.checked, stored: events.stored, context, previa, published, error: null };
 }
 
 export async function runWatchdog(env: Env = process.env, now = new Date()): Promise<{ findings: WatchdogFinding[]; error: string | null }> {

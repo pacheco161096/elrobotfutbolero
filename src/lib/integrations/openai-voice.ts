@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { acceptVoiceLine, type Draft } from "@/lib/engines/copy";
+import { estimateUsd, recordAiUsage } from "@/lib/integrations/ai-cost";
 
 let personalityDoc: string | null = null;
 
@@ -39,7 +40,16 @@ export async function applyVoice(
     }),
   });
   if (!response.ok) return draft;
-  const body = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const body = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  const model = env.OPENAI_MODEL || "gpt-4o-mini";
+  const promptTokens = body.usage?.prompt_tokens ?? 0;
+  const completionTokens = body.usage?.completion_tokens ?? 0;
+  if (promptTokens || completionTokens) {
+    await recordAiUsage({ area: "voz", model, promptTokens, completionTokens, usd: estimateUsd(model, promptTokens, completionTokens) }, env);
+  }
   const content = body.choices?.[0]?.message?.content;
   if (!content) return draft;
   return acceptVoiceLine(draft, content);

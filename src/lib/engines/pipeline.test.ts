@@ -9,7 +9,7 @@ import { storyKeyFor } from "@/lib/engines/story";
 import { classifyTruth } from "@/lib/engines/truth";
 import { fetchFixtures, mapFixture, mapLiveEvent } from "@/lib/integrations/api-football";
 import { presentMatch } from "@/lib/matches/present";
-import { publishWithZernio } from "@/lib/integrations/gates";
+import { FACEBOOK_BLACK_TEXT_PRESET, publishWithZernio, zernioPostBody } from "@/lib/integrations/gates";
 import { liveWorkerTick } from "@/lib/worker/tick";
 import { describe, expect, it, vi } from "vitest";
 
@@ -227,6 +227,28 @@ describe("api football", () => {
     expect(view.detail).toBe("Programado");
   });
 
+  it("el VAR sin fallo no inventa la decisión", () => {
+    const result = runPipeline(base({ eventType: "VAR", player: "Delantero", team: "León", detail: "Goal Under Review", homeScore: null, awayScore: null }), {
+      credentials: credentialsOff,
+      overrides: emptyOverrides(),
+      now,
+    });
+    expect(result.flash?.valid).toBe(true);
+    expect(result.flash?.lockedLines.join(" ")).toContain("revisa una jugada");
+    expect(result.flash?.lockedLines.join(" ")).not.toMatch(/\d+\s*[-–]\s*\d+/);
+    expect(result.visual.mode).toBe("texto");
+  });
+
+  it("una palabra bloqueada no se publica", () => {
+    const result = runPipeline(base({ text: "se fue la luz" }), {
+      credentials: credentialsOff,
+      overrides: { ...emptyOverrides(), blockedWords: ["luz"] },
+      now,
+    });
+    expect(result.decision).toBe("DISCARD");
+    expect(result.reason).toContain("luz");
+  });
+
   it("un gol sin detalle de penal fallado sigue siendo gol", () => {
     expect(mapLiveEvent({
       fixtureId: "1",
@@ -245,9 +267,9 @@ describe("api football", () => {
   it("pide los partidos con la llave en el header", async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ response: [] })));
     await fetchFixtures({ from: "2026-09-24", to: "2026-09-28", season: 2026, key: "llave-de-prueba" }, fetchImpl);
-    const call = fetchImpl.mock.calls[0];
-    expect(String(call?.[0])).toContain("league=262");
-    expect((call?.[1] as RequestInit).headers).toMatchObject({ "x-apisports-key": "llave-de-prueba" });
+    const call = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(String(call[0])).toContain("league=262");
+    expect(call[1].headers).toMatchObject({ "x-apisports-key": "llave-de-prueba" });
   });
 });
 
@@ -263,11 +285,36 @@ describe("expresiones", () => {
 });
 
 describe("integraciones pendientes", () => {
-  it("Zernio no hace ninguna llamada sin el contrato", async () => {
+  it("Zernio no hace ninguna llamada sin la llave y la página", async () => {
     const fetchImpl = vi.fn();
     const result = await publishWithZernio({ idempotencyKey: "x", text: "hola" }, {}, fetchImpl);
     expect(result.status).toBe("pending_credentials");
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("el Flash sale como texto con fondo negro y el segundo post puede llevar imagen", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ post: { _id: "z1" } }), { status: 200 }));
+    const flash = zernioPostBody({ text: "⚽ GOOOOL DE LEÓN.", accountId: "acc_demo", textPresetId: FACEBOOK_BLACK_TEXT_PRESET });
+    expect(flash.mediaItems).toBeUndefined();
+    expect(flash.platforms[0].platformSpecificData).toEqual({ facebookSettings: { textFormatPresetId: FACEBOOK_BLACK_TEXT_PRESET } });
+    const withPhoto = zernioPostBody({
+      text: "El centro vino de la derecha.",
+      accountId: "acc_demo",
+      imageUrl: "https://cdn.example.com/gol.jpg",
+      textPresetId: FACEBOOK_BLACK_TEXT_PRESET,
+    });
+    expect(withPhoto.mediaItems).toEqual([{ type: "image", url: "https://cdn.example.com/gol.jpg" }]);
+    expect(withPhoto.platforms[0].platformSpecificData).toBeUndefined();
+    const sent = await publishWithZernio({ idempotencyKey: "gol-1", text: "⚽ GOOOOL DE LEÓN." }, {
+      ZERNIO_API_KEY: "llave",
+      ZERNIO_ACCOUNT_ID: "acc_demo",
+      ZERNIO_TEXT_PRESET_ID: "106018623298955",
+    }, fetchImpl);
+    expect(sent).toEqual({ status: "sent", externalId: "z1" });
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://zernio.com/api/v1/posts");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer llave");
+    expect(JSON.parse(init.body as string)).toEqual(flash);
   });
 
   it("el worker no sondea sin base ni API-Football", async () => {

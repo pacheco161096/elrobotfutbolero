@@ -12,3 +12,15 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: ZERNIO_API_KEY
+        sync: false
+      - key: ZERNIO_ACCOUNT_ID
+        sync: false
+      - key: ZERNIO_TEXT_PRESET_ID
+        sync: false
+      - key: BRIGHT_DATA_API_KEY
+        sync: false
+      - key: BRIGHT_DATA_DATASET_ID
+        sync: false
+      - key: BRIGHT_DATA_PAGE_URLS
+        sync: false

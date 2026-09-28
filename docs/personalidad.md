@@ -729,9 +729,13 @@ No todas las publicaciones necesitan una imagen generada por IA.
 
 El sistema debe decidir qué visual tiene sentido.
 
+El Flash va sin imagen. Puede llevar emojis. Siempre sale como texto con formato: una tarjeta editorial con el dato en grande, no un párrafo suelto. La arma el Visual Engine. Zernio solo la publica en Facebook.
+
+La imagen se busca en el segundo post, a partir del contexto. Si hay una relacionada, entra. Si no existe, ese post sale igual: solo texto, con el mismo formato. No se inventa la foto ni se usa una de otro tema.
+
 ### Evento futbolístico real
 
-Utilizar una fotografía real relevante cuando corresponda y sea posible.
+El Flash de ese evento va sin imagen. La fotografía real se busca para el segundo post, cuando el contexto la tenga.
 
 ### Noticia importante
 

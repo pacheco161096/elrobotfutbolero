@@ -69,6 +69,23 @@ export function buildFlash(event: IncomingEvent, causeStatus: ClaimStatus | null
     if (event.homeScore != null && event.awayScore != null) {
       lockedLines.push(event.eventType === "FULL_TIME" ? "Final." : "Medio tiempo.", scoreLine(event));
     }
+  } else if (event.eventType === "VAR") {
+    const detail = (event.detail ?? "").toLowerCase();
+    const who = [event.player, event.team].filter(Boolean).join(", ");
+    const outcome = detail.includes("cancel") || detail.includes("disallow") || detail.includes("anul")
+      ? "anuló el gol"
+      : detail.includes("penalty confirmed") || detail.includes("penal confirmado")
+        ? "confirmó el penal"
+        : detail.includes("goal confirmed") || detail.includes("gol confirmado")
+          ? "confirmó el gol"
+          : null;
+    if (outcome && (event.homeScore == null || event.awayScore == null)) missing.push("marcador");
+    if (!outcome || (event.homeScore != null && event.awayScore != null)) {
+      lockedLines.push(outcome
+        ? `El VAR ${outcome}${who ? ` de ${who}` : ""}.`
+        : who ? `El VAR revisa una jugada de ${who}.` : "El VAR revisa una jugada.");
+      if (outcome && event.homeScore != null && event.awayScore != null) lockedLines.push(scoreLine(event));
+    }
   } else if (event.eventType === "SUSPENDED") {
     causeMode = "omit";
     if (causeStatus === "CONFIRMED" && event.cause?.text) {

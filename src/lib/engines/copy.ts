@@ -19,6 +19,7 @@ export function composeDraft(input: {
     if (input.america) personality = "Qué sorpresa… 🤖";
     else if (input.eventType === "GOAL") personality = "Y yo que apenas estaba calentando servidores. 🤖";
     else if (input.eventType === "RED_CARD") personality = "No tengo sentimientos. Tengo datos. 🤖";
+    else if (input.eventType === "VAR") personality = "Estoy viendo la repetición. 🤖";
     else personality = "Los humanos ya se fueron a dormir. Yo sigo aquí. 🤖";
   }
   if (personality && SCORE.test(personality)) personality = null;
@@ -46,7 +47,7 @@ export function pickExpression(input: { eventType: string; tone: "normal" | "inf
   if (input.meme) return "humor";
   if (input.eventType === "GOAL") return "golazo";
   if (input.eventType === "RED_CARD" || input.eventType === "PENALTY" || input.eventType === "COMPLAINT") return "polemica";
-  if (input.eventType === "SUSPENDED") return "investigacion";
+  if (input.eventType === "VAR" || input.eventType === "SUSPENDED") return "investigacion";
   return "informacion";
 }
 

@@ -1,3 +1,5 @@
+import { brightDataMissing } from "@/lib/integrations/bright-data";
+
 export type PendingItem = {
   id: string;
   name: string;
@@ -22,8 +24,8 @@ export function readCredentials(env: Env = process.env): Credentials {
     database: Boolean(env.DATABASE_URL),
     apiFootball: Boolean(env.API_FOOTBALL_KEY),
     openai: Boolean(env.OPENAI_API_KEY),
-    zernio: Boolean(env.ZERNIO_API_KEY && env.ZERNIO_BASE_URL && env.ZERNIO_PUBLISH_PATH),
-    brightData: Boolean(env.BRIGHT_DATA_API_KEY),
+    zernio: Boolean(env.ZERNIO_API_KEY && env.ZERNIO_ACCOUNT_ID),
+    brightData: brightDataMissing(env).length === 0,
     cron: Boolean(env.CRON_SECRET),
   };
 }
@@ -57,14 +59,14 @@ export function pendingItems(env: Env = process.env): PendingItem[] {
       name: "Zernio → Facebook",
       kind: "credential",
       ready: credentials.zernio,
-      detail: "ZERNIO_API_KEY, ZERNIO_BASE_URL y ZERNIO_PUBLISH_PATH. Sin el path no se llama a ninguna URL.",
+      detail: "ZERNIO_API_KEY y ZERNIO_ACCOUNT_ID. Publica en Facebook la pieza ya armada. El Flash va sin imagen, con el fondo negro de texto grande.",
     },
     {
       id: "brightData",
       name: "Bright Data",
       kind: "credential",
       ready: credentials.brightData,
-      detail: "BRIGHT_DATA_API_KEY. Solo contexto social. El Flash no lo espera.",
+      detail: "BRIGHT_DATA_API_KEY, BRIGHT_DATA_DATASET_ID y BRIGHT_DATA_PAGE_URLS. Varias fanpages en una sola llamada, máximo 20. Solo contexto social. El Flash no lo espera.",
     },
     {
       id: "cron",
@@ -95,8 +97,8 @@ export function missingNames(credentials: Credentials, keys: Array<keyof Credent
     database: "DATABASE_URL",
     apiFootball: "API_FOOTBALL_KEY",
     openai: "OPENAI_API_KEY",
-    zernio: "ZERNIO_API_KEY + ZERNIO_BASE_URL + ZERNIO_PUBLISH_PATH",
-    brightData: "BRIGHT_DATA_API_KEY",
+    zernio: "ZERNIO_API_KEY + ZERNIO_ACCOUNT_ID",
+    brightData: "BRIGHT_DATA_API_KEY + BRIGHT_DATA_DATASET_ID + BRIGHT_DATA_PAGE_URLS",
     cron: "CRON_SECRET",
   };
   return keys.filter((key) => !credentials[key]).map((key) => labels[key]);

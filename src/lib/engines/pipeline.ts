@@ -46,9 +46,13 @@ function blocked(event: IncomingEvent, overrides: Overrides): string | null {
   const hitSource = overrides.blockedSources.find((source) => sourceNames.includes(source.toLowerCase()));
   if (hitSource) return `Fuente bloqueada: ${hitSource}`;
   const topics = (event.topics ?? []).map((topic) => topic.toLowerCase());
-  const blob = `${event.text ?? ""} ${topics.join(" ")}`.toLowerCase();
-  const hitTopic = overrides.blockedTopics.find((topic) => blob.includes(topic.toLowerCase()));
+  const blob = `${event.text ?? ""} ${event.player ?? ""} ${event.team ?? ""} ${topics.join(" ")}`.toLowerCase();
+  const hitTopic = overrides.blockedTopics.find((topic) => topic && blob.includes(topic.toLowerCase()));
   if (hitTopic) return `Tema bloqueado: ${hitTopic}`;
+  const hitWord = overrides.blockedWords.find((word) => word && blob.includes(word.toLowerCase()));
+  if (hitWord) return `Palabra bloqueada: ${hitWord}`;
+  const hitPerson = overrides.blockedPeople.find((person) => person && blob.includes(person.toLowerCase()));
+  if (hitPerson) return `Persona bloqueada: ${hitPerson}`;
   return null;
 }
 
@@ -63,7 +67,7 @@ export function runPipeline(event: IncomingEvent, input: { credentials: Credenti
   const importance = classifyImportance(event);
   const tone = input.overrides.safeMode || sensitive(event) ? "informar_sin_humor" : "normal";
   const americaTag = [event.homeTeam, event.awayTeam, event.team ?? ""].some((name) => name.toLowerCase().includes("américa") || name.toLowerCase().includes("america"));
-  const flash = ["GOAL", "RED_CARD", "PENALTY", "MISSED_PENALTY", "HALFTIME", "FULL_TIME", "SUSPENDED"].includes(event.eventType)
+  const flash = ["GOAL", "RED_CARD", "PENALTY", "MISSED_PENALTY", "VAR", "HALFTIME", "FULL_TIME", "SUSPENDED"].includes(event.eventType)
     ? buildFlash(event, causeStatus)
     : null;
 
@@ -162,7 +166,7 @@ export function runPipeline(event: IncomingEvent, input: { credentials: Credenti
       waitsForBrightData: !input.credentials.brightData,
       instruction: event.eventType === "SUSPENDED"
         ? "Investigar el motivo. No afirmar una causa sin confirmación."
-        : "Buscar contexto nuevo. Si no hay nada nuevo, descartar el segundo post.",
+        : "Buscar en las páginas contexto del partido. No tiene que ser un dato nuevo del evento. Si no regresan nada del partido, no hay segundo post.",
     },
     visual: {
       ...(botImage

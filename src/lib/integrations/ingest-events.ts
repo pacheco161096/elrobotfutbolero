@@ -1,10 +1,12 @@
 import pg from "pg";
 import { readCredentials } from "@/lib/config/pending";
-import { emptyOverrides } from "@/lib/control/overrides";
+import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import type { IncomingEvent } from "@/lib/domain/types";
 import { runPipeline } from "@/lib/engines/pipeline";
 import { shouldFetchEvents } from "@/lib/cron/assess";
 import { applyVoice } from "@/lib/integrations/openai-voice";
+import { generateRobotImage } from "@/lib/integrations/robot-image";
+import { presentCard } from "@/lib/engines/visual";
 import { API_FOOTBALL_HOST, mapLiveEvent, type LiveEventInput } from "@/lib/integrations/api-football";
 
 export async function ingestPlayedEvents(env: Record<string, string | undefined> = process.env, now = new Date()): Promise<{ checked: number; stored: number }> {
@@ -13,6 +15,7 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
   if (!key || !databaseUrl) return { checked: 0, stored: 0 };
   const client = new pg.Client({ connectionString: databaseUrl });
   await client.connect();
+  await refreshOverrides(databaseUrl);
   let checked = 0;
   let stored = 0;
   try {
@@ -59,6 +62,7 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
           minute: mapped.minute ?? undefined,
           player: mapped.player ?? undefined,
           team: mapped.team ?? undefined,
+          detail: mapped.detail ?? undefined,
           homeTeam: match.home_team,
           awayTeam: match.away_team,
           homeScore: match.home_score,
@@ -68,7 +72,7 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
           existingStories: [],
           recentPosts: [],
         };
-        const result = runPipeline(incoming, { credentials: readCredentials(env), overrides: emptyOverrides(), now: new Date() });
+        const result = runPipeline(incoming, { credentials: readCredentials(env), overrides: getOverrides(), now: new Date() });
         const draft = result.draft ? await applyVoice(result.draft, env) : null;
         const story = await client.query(
           `INSERT INTO stories (story_key, fixture_id, title, status, last_event_type, home_score, away_score, claim_status)
@@ -83,21 +87,26 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
           [story.rows[0].id, inserted.rows[0].id, result.decision, result.reason, result.importance, result.truth, incoming.sources.length, result.truth, result.cooldown],
         );
         if (draft) {
+          const kind = result.decision === "PUBLISH_NOW" ? "FLASH" : "CONTEXT";
+          const robotImage = kind !== "FLASH" && result.visual.mode === "bot_generada"
+            ? await generateRobotImage(result.visual.expression, env)
+            : null;
           await client.query(
-            `INSERT INTO posts (story_id, event_id, kind, idempotency_key, body, facts, tone, image_mode, status, club)
-             VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)
+            `INSERT INTO posts (story_id, event_id, kind, idempotency_key, body, facts, tone, image_mode, status, club, format)
+             VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)
              ON CONFLICT (idempotency_key) DO NOTHING`,
             [
               story.rows[0].id,
               inserted.rows[0].id,
-              result.decision === "PUBLISH_NOW" ? "FLASH" : "CONTEXT",
+              kind,
               result.idempotencyKey,
-              draft.text,
-              JSON.stringify(result.flash?.facts ?? {}),
+              presentCard(draft.text.split("\n")),
+              JSON.stringify({ ...(result.flash?.facts ?? {}), imageUrl: robotImage }),
               result.tone,
-              result.visual.mode,
+              robotImage ? "bot_generada" : "texto",
               result.publication.status,
               mapped.team,
+              "texto",
             ],
           );
         }
