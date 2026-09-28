@@ -1,7 +1,7 @@
 import pg from "pg";
 import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import { imageForPost } from "@/lib/engines/visual";
-import { previaDraft } from "@/lib/integrations/previa";
+import { kickoffDraft, previaDraft } from "@/lib/integrations/previa";
 import { publishWithZernio, zernioGate } from "@/lib/integrations/gates";
 import { applyVoice } from "@/lib/integrations/openai-voice";
 
@@ -57,7 +57,7 @@ export async function publishReadyPosts(
        WHERE p.facebook_post_id IS NULL
          AND p.body IS NOT NULL
          AND p.status IN ('queued', 'pending_credentials')
-         AND (p.kind = 'PREVIA' OR m.status = ANY($1::text[]))
+         AND (p.kind IN ('PREVIA', 'KICKOFF') OR m.status = ANY($1::text[]))
          AND (SELECT count(*) FROM post_attempts a WHERE a.post_id = p.id AND a.status = 'error') < 2
        ORDER BY p.created_at
        LIMIT 5`,
@@ -138,6 +138,43 @@ export async function runPreMatchPosts(
         [`previa:${match.fixture_id}`, voiced.text],
       );
       created += 1;
+    }
+  } finally {
+    await client.end();
+  }
+  return created;
+}
+
+const KICKOFF_MINUTE = 20;
+
+export async function runKickoffPosts(
+  env: Record<string, string | undefined> = process.env,
+): Promise<number> {
+  const databaseUrl = env.DATABASE_URL;
+  if (databaseUrl) await refreshOverrides(databaseUrl);
+  const overrides = getOverrides();
+  if (!databaseUrl || overrides.pauseAll || overrides.pausePublishing) return 0;
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  let created = 0;
+  try {
+    const matches = await client.query<{ fixture_id: string; home_team: string; away_team: string }>(
+      `SELECT m.fixture_id, m.home_team, m.away_team
+       FROM matches m
+       WHERE m.status = 'LIVE'
+         AND (m.minute IS NULL OR m.minute <= $1)
+         AND NOT EXISTS (SELECT 1 FROM posts p WHERE p.idempotency_key = 'kickoff:' || m.fixture_id)`,
+      [KICKOFF_MINUTE],
+    );
+    for (const match of matches.rows) {
+      const voiced = await applyVoice(kickoffDraft({ home: match.home_team, away: match.away_team }), env);
+      const inserted = await client.query(
+        `INSERT INTO posts (kind, idempotency_key, body, facts, tone, image_mode, status, format)
+         VALUES ('KICKOFF', $1, $2, '{}'::jsonb, 'normal', 'texto', 'queued', 'texto')
+         ON CONFLICT (idempotency_key) DO NOTHING`,
+        [`kickoff:${match.fixture_id}`, voiced.text],
+      );
+      created += inserted.rowCount ?? 0;
     }
   } finally {
     await client.end();

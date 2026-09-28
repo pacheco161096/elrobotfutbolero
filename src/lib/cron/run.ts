@@ -2,7 +2,7 @@ import pg from "pg";
 import { assessSchedule, inconsistentFindings, type ScheduledFixture } from "@/lib/cron/assess";
 import { watchdogFindings, type MatchStatus, type WatchdogFinding } from "@/lib/engines/match-state";
 import { ingestPlayedEvents } from "@/lib/integrations/ingest-events";
-import { publishReadyPosts, runPreMatchPosts } from "@/lib/integrations/publish";
+import { publishReadyPosts, runKickoffPosts, runPreMatchPosts } from "@/lib/integrations/publish";
 import { runSocialContext } from "@/lib/integrations/social-context";
 import { refreshOverrides } from "@/lib/control/overrides";
 import { syncLigaMx, syncStandings } from "@/lib/integrations/sync-matches";
@@ -76,8 +76,9 @@ export async function runFootballEngine(env: Env = process.env, now = new Date()
         })
       : 0;
     const previa = await runPreMatchPosts(env, now);
+    const kickoff = await runKickoffPosts(env);
     const published = await publishReadyPosts(env);
-    await writeLog(databaseUrl, "info", "football-engine", "Nada en juego. No consulté API-Football.", { preMatch: updated, previa, published });
+    await writeLog(databaseUrl, "info", "football-engine", "Nada en juego. No consulté API-Football.", { preMatch: updated, previa, kickoff, published });
     return { preMatch: updated, refreshed: false, saved: 0, checked: 0, stored: 0, previa, published, error: null };
   }
   const synced = await syncLigaMx(env, now);
@@ -94,6 +95,7 @@ export async function runFootballEngine(env: Env = process.env, now = new Date()
     context = { status: "error", checked: 0, message: raw && !/postgres:|bearer|api_key/i.test(raw) ? raw : "Bright Data falló." };
   }
   const previa = await runPreMatchPosts(env, now);
+  const kickoff = await runKickoffPosts(env);
   const published = await publishReadyPosts(env);
   await writeLog(databaseUrl, context.status === "error" ? "error" : "info", "football-engine", "Revisé los partidos que ya deberían haber empezado.", {
     saved: synced.saved,
@@ -101,6 +103,7 @@ export async function runFootballEngine(env: Env = process.env, now = new Date()
     stored: events.stored,
     context: context.status,
     previa,
+    kickoff,
     published,
   });
   return { preMatch: 0, refreshed: true, saved: synced.saved, checked: events.checked, stored: events.stored, context, previa, published, error: null };

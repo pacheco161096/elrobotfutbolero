@@ -2,7 +2,7 @@ import pg from "pg";
 import { pollingIntervalMs, type MatchStatus } from "@/lib/engines/match-state";
 import { fetchLiveFixtures } from "@/lib/integrations/api-football";
 import { ingestPlayedEvents } from "@/lib/integrations/ingest-events";
-import { publishReadyPosts } from "@/lib/integrations/publish";
+import { publishReadyPosts, runKickoffPosts } from "@/lib/integrations/publish";
 import { saveMatches } from "@/lib/integrations/sync-matches";
 
 const IDLE_MS = 60_000;
@@ -65,6 +65,7 @@ export async function pollLive(
       checked = events.checked;
       stored = events.stored;
       try {
+        await runKickoffPosts(env);
         await publishReadyPosts(env);
       } catch {
         error = error ?? "No pude publicar lo que ya estaba listo.";

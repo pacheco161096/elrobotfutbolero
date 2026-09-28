@@ -1,5 +1,5 @@
 import { mentionsMatch } from "@/lib/engines/context";
-import { previaDraft } from "@/lib/integrations/previa";
+import { kickoffDraft, previaDraft } from "@/lib/integrations/previa";
 import { describe, expect, it } from "vitest";
 
 describe("previa y contexto", () => {
@@ -12,6 +12,13 @@ describe("previa y contexto", () => {
     expect(draft.text).toContain("Leon");
     expect(draft.text).toContain("FC Juarez");
     expect(draft.text).toContain("7:00");
+    expect(draft.text).not.toMatch(/\d+\s*[-–]\s*\d+/);
+  });
+
+  it("el pitazo avisa que ya empezó y no inventa marcador", () => {
+    const draft = kickoffDraft({ home: "Leon", away: "FC Juarez" });
+    expect(draft.text).toContain("Ya empezó Leon contra FC Juarez.");
+    expect(draft.locked).toEqual(["Ya empezó Leon contra FC Juarez."]);
     expect(draft.text).not.toMatch(/\d+\s*[-–]\s*\d+/);
   });
 

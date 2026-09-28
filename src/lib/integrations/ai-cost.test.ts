@@ -13,6 +13,7 @@ describe("costo y pieza visual", () => {
   it("el flash no lleva imagen y el segundo post sí, si hay una", () => {
     expect(imageForPost("FLASH", "https://cdn.example/gol.jpg", false)).toBeNull();
     expect(imageForPost("PREVIA", "https://cdn.example/gol.jpg", false)).toBeNull();
+    expect(imageForPost("KICKOFF", "https://cdn.example/gol.jpg", false)).toBeNull();
     expect(imageForPost("CONTEXT", "https://cdn.example/gol.jpg", false)).toBe("https://cdn.example/gol.jpg");
     expect(imageForPost("CONTEXT", "https://cdn.example/gol.jpg", true)).toBeNull();
   });

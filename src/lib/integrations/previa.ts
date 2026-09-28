@@ -2,6 +2,12 @@ import type { Draft } from "@/lib/engines/copy";
 
 const SCORE = /\d+\s*[-–]\s*\d+/;
 
+export function kickoffDraft(input: { home: string; away: string }): Draft {
+  const locked = [`Ya empezó ${input.home} contra ${input.away}.`];
+  const personality = "Yo ya estoy viendo. 🤖";
+  return { locked, personality, text: [...locked, personality].join("\n"), voice: "plantilla" };
+}
+
 export function previaDraft(input: { home: string; away: string; kickoff: Date }): Draft {
   const hour = new Intl.DateTimeFormat("es-MX", {
     timeZone: "America/Mexico_City",
