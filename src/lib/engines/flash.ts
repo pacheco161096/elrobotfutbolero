@@ -1,3 +1,4 @@
+import { goalKind } from "@/lib/engines/copy";
 import type { IncomingEvent } from "@/lib/domain/types";
 import type { ClaimStatus } from "@/lib/domain/types";
 
@@ -44,7 +45,10 @@ export function buildFlash(event: IncomingEvent, causeStatus: ClaimStatus | null
     if (event.minute == null) missing.push("minuto");
     missing.push(...scoreMissing(event).map(() => "marcador actualizado"));
     if (missing.length === 0) {
-      lockedLines.push(`⚽ GOOOOL DE ${event.team?.toUpperCase()}.`, scoreLine(event));
+      const kind = goalKind(event.detail);
+      if (kind === "autogol") lockedLines.push(event.player ? `Autogol de ${event.player}.` : "Autogol.", scoreLine(event));
+      else if (kind === "penal") lockedLines.push(event.player ? `Penal de ${event.player}.` : `Penal de ${event.team}.`, scoreLine(event));
+      else lockedLines.push(`⚽ GOOOOL DE ${event.team?.toUpperCase()}.`, scoreLine(event));
     }
   } else if (event.eventType === "RED_CARD") {
     if (!event.player) missing.push("jugador");

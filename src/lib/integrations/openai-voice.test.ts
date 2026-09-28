@@ -36,6 +36,30 @@ describe("voz", () => {
     });
     expect(late.personality).not.toMatch(/calentando|apenas estaba/i);
     expect(late.situation).toContain("segundo tiempo");
+    const ownGoal = composeDraft({
+      eventType: "GOAL",
+      lockedLines: ["Autogol de Francisco Nevarez.", "Leon 1-0 FC Juarez."],
+      tone: "normal",
+      america: false,
+      minute: 76,
+      detail: "Own Goal",
+      seed: "1550982:own",
+    });
+    expect(ownGoal.situation).toContain("Autogol");
+    expect(ownGoal.situation).toContain("segundo tiempo");
+    expect(ownGoal.personality).not.toMatch(/calentando|golazo/i);
+    const penalty = composeDraft({
+      eventType: "GOAL",
+      lockedLines: ["Penal de Oscar Estupiñan.", "Leon 1-1 FC Juarez."],
+      tone: "normal",
+      america: false,
+      minute: 90,
+      detail: "Penalty",
+      seed: "1550982:pen",
+    });
+    expect(penalty.situation).toContain("penal");
+    expect(penalty.situation).toContain("compensación");
+    expect(penalty.personality).toMatch(/penal/i);
     expect(voiceFits("Y yo que apenas estaba calentando servidores. 🤖", 79)).toBe(false);
     const rejected = acceptVoiceLine(late, "Y yo que apenas estaba calentando servidores. 🤖");
     expect(rejected.personality).not.toMatch(/calentando/i);
@@ -59,6 +83,23 @@ describe("voz", () => {
     }, null);
     expect(card.lockedLines.join(" ")).toBe("El VAR confirmó el gol. Leon 1-0 FC Juarez.");
     expect(card.lockedLines.join(" ")).not.toContain("Jurado");
+    const ownGoal = buildFlash({
+      fixtureId: "1550982",
+      eventType: "GOAL",
+      minute: 76,
+      player: "Francisco Nevarez",
+      team: "Leon",
+      detail: "Own Goal",
+      homeTeam: "Leon",
+      awayTeam: "FC Juarez",
+      homeScore: 1,
+      awayScore: 0,
+      origin: "api_event",
+      sources: [],
+      existingStories: [],
+      recentPosts: [],
+    }, null);
+    expect(ownGoal.lockedLines[0]).toBe("Autogol de Francisco Nevarez.");
   });
 
   it("no llama a OpenAI si no hay línea de personalidad", async () => {

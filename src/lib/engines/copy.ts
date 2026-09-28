@@ -5,6 +5,7 @@ export type Draft = {
   voice: "plantilla" | "openai";
   eventType?: string;
   minute?: number | null;
+  detail?: string | null;
   seed?: string;
   situation?: string;
   avoid?: string[];
@@ -34,7 +35,35 @@ export const KICKOFF_LINES = [
   "Desde el minuto cero, aquí estoy. 🤖",
 ];
 
-export function goalPool(minute: number | null | undefined): string[] {
+export type MatchClock = "sin_minuto" | "primero" | "segundo" | "compensacion";
+export type GoalKind = "gol" | "autogol" | "penal";
+
+export function matchClock(minute: number | null | undefined): MatchClock {
+  if (minute == null) return "sin_minuto";
+  if (minute >= 90) return "compensacion";
+  if (minute >= 46) return "segundo";
+  return "primero";
+}
+
+export function goalKind(detail: string | null | undefined): GoalKind {
+  const text = (detail ?? "").toLowerCase();
+  if (text.includes("own")) return "autogol";
+  if (text.includes("penalty") || text.includes("penal")) return "penal";
+  return "gol";
+}
+
+export function goalPool(minute: number | null | undefined, kind: GoalKind = "gol"): string[] {
+  const clock = matchClock(minute);
+  if (kind === "autogol") {
+    return clock === "primero"
+      ? ["Se lo metió solo. 🤖", "En propia, y apenas iba. 🤖"]
+      : ["Se lo metió solo, a esas horas. 🤖", "En propia, ya iba tarde. 🤖"];
+  }
+  if (kind === "penal") {
+    return clock === "compensacion" || clock === "segundo"
+      ? ["Les dejaron el penal a esas horas. 🤖", "El penal les cayó cuando ya pedían la hora. 🤖"]
+      : ["Les dejaron el penal. 🤖", "Ni se sentaban y ya hay penal. 🤖"];
+  }
   if (minute == null) return OPEN_GOAL;
   if (minute < 15) return EARLY_GOAL;
   if (minute < 46) return OPEN_GOAL;
@@ -63,14 +92,33 @@ export function voiceFits(line: string, minute: number | null | undefined): bool
   return true;
 }
 
-function situationFor(eventType: string, minute: number | null | undefined): string {
-  const when = minute == null ? "sin minuto confirmado" : `minuto ${minute}`;
-  if (eventType === "GOAL" && minute != null && minute >= 46) {
-    return `Gol en el segundo tiempo, ${when}. No es el arranque: no digas que acabas de llegar ni que estás calentando.`;
+const CLOCK_LABEL: Record<MatchClock, string> = {
+  sin_minuto: "sin minuto confirmado",
+  primero: "primer tiempo",
+  segundo: "segundo tiempo",
+  compensacion: "tiempo de compensación",
+};
+
+export function describeMoment(input: { eventType: string; minute?: number | null; detail?: string | null }): string {
+  const clock = matchClock(input.minute);
+  const when = input.minute == null ? CLOCK_LABEL[clock] : `${CLOCK_LABEL[clock]}, minuto ${input.minute}`;
+  const kind = goalKind(input.detail);
+  if (input.eventType === "GOAL" && kind === "autogol") {
+    return `Autogol, ${when}. El jugador se lo metió en propia. No lo trates como un golazo del equipo que lo sufrió, ni como si el partido acabara de empezar.`;
   }
-  if (eventType === "GOAL") return `Gol, ${when}.`;
-  if (eventType === "VAR") return `Revisión del VAR, ${when}. No inventes quién anotó ni repitas el dato.`;
-  return `${eventType}, ${when}.`;
+  if (input.eventType === "GOAL" && kind === "penal") {
+    return `Gol de penal, ${when}. El dato ya dice que fue penal. La frase habla de ese momento, no del arranque.`;
+  }
+  if (input.eventType === "GOAL" && clock !== "primero" && clock !== "sin_minuto") {
+    return `Gol, ${when}. No es el arranque: no digas que acabas de llegar ni que estás calentando.`;
+  }
+  if (input.eventType === "GOAL") return `Gol, ${when}.`;
+  const detail = (input.detail ?? "").toLowerCase();
+  if (input.eventType === "VAR" && (detail.includes("confirmed") || detail.includes("confirm"))) {
+    return `El VAR ya decidió, ${when}. No digas que sigue revisando. No nombres a un jugador que no esté en las líneas fijas.`;
+  }
+  if (input.eventType === "VAR") return `El VAR revisa la jugada, ${when}. No inventes el fallo ni quién anotó.`;
+  return `${input.eventType}, ${when}.`;
 }
 
 const SCORE = /\d+\s*[-–]\s*\d+/;
@@ -81,6 +129,7 @@ export function composeDraft(input: {
   tone: "normal" | "informar_sin_humor";
   america: boolean;
   minute?: number | null;
+  detail?: string | null;
   seed?: string;
   avoid?: string[];
 }): Draft {
@@ -89,9 +138,9 @@ export function composeDraft(input: {
   const avoid = input.avoid ?? [];
   let personality: string | null = null;
   if (input.tone === "normal" && input.eventType !== "SUSPENDED") {
-    if (input.america && input.eventType === "GOAL") personality = "Otra vez el América. Qué raro. 🤖";
+    if (input.america && input.eventType === "GOAL" && goalKind(input.detail) === "gol") personality = "Otra vez el América. Qué raro. 🤖";
     else if (input.america) personality = "Qué sorpresa… 🤖";
-    else if (input.eventType === "GOAL") personality = pickLine(goalPool(input.minute), seed, avoid);
+    else if (input.eventType === "GOAL") personality = pickLine(goalPool(input.minute, goalKind(input.detail)), seed, avoid);
     else if (input.eventType === "RED_CARD") personality = "No tengo sentimientos. Tengo datos. 🤖";
     else if (input.eventType === "VAR") personality = "Estoy viendo la repetición. 🤖";
     else personality = "Los humanos ya se fueron a dormir. Yo sigo aquí. 🤖";
@@ -105,8 +154,9 @@ export function composeDraft(input: {
     voice: "plantilla",
     eventType: input.eventType,
     minute: input.minute,
+    detail: input.detail,
     seed,
-    situation: situationFor(input.eventType, input.minute),
+    situation: describeMoment({ eventType: input.eventType, minute: input.minute, detail: input.detail }),
     avoid,
   };
 }
@@ -137,7 +187,7 @@ export function pickExpression(input: { eventType: string; tone: "normal" | "inf
 
 function replacementLine(draft: Draft, rejected: string): string | null {
   if (draft.eventType !== "GOAL" && draft.eventType !== "KICKOFF") return draft.personality;
-  const pool = draft.eventType === "GOAL" ? goalPool(draft.minute) : KICKOFF_LINES;
+  const pool = draft.eventType === "GOAL" ? goalPool(draft.minute, goalKind(draft.detail)) : KICKOFF_LINES;
   return pickLine(pool, `${draft.seed ?? "voz"}:otra`, [...(draft.avoid ?? []), rejected, draft.personality ?? ""]);
 }
 

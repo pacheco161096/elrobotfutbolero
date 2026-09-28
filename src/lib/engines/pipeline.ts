@@ -154,7 +154,8 @@ export function runPipeline(event: IncomingEvent, input: { credentials: Credenti
         tone,
         america: americaTag,
         minute: event.minute,
-        seed: `${event.fixtureId}:${event.eventType}:${event.minute ?? "x"}`,
+        detail: event.detail,
+        seed: `${event.fixtureId}:${event.eventType}:${event.minute ?? "x"}:${event.detail ?? ""}`,
       })
     : null;
   return {
