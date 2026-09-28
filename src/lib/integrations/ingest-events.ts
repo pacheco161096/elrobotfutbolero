@@ -93,7 +93,8 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
           [story.rows[0].id, inserted.rows[0].id, result.decision, result.reason, result.importance, result.truth, incoming.sources.length, result.truth, result.cooldown],
         );
-        if (draft) {
+        const spoken = draft && draft.voice === "openai" && draft.personality ? draft.text : draft?.locked.join("\n") ?? "";
+        if (draft && spoken.trim()) {
           const kind = result.decision === "PUBLISH_NOW" ? "FLASH" : "CONTEXT";
           const robotImage = kind !== "FLASH" && result.visual.mode === "bot_generada"
             ? await generateRobotImage(result.visual.expression, env)
@@ -107,7 +108,7 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
               inserted.rows[0].id,
               kind,
               result.idempotencyKey,
-              presentCard(draft.text.split("\n")),
+              presentCard(spoken.split("\n")),
               JSON.stringify({ ...(result.flash?.facts ?? {}), imageUrl: robotImage }),
               result.tone,
               robotImage ? "bot_generada" : "texto",

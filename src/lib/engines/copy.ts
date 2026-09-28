@@ -185,24 +185,14 @@ export function pickExpression(input: { eventType: string; tone: "normal" | "inf
   return "informacion";
 }
 
-function replacementLine(draft: Draft, rejected: string): string | null {
-  if (draft.eventType !== "GOAL" && draft.eventType !== "KICKOFF") return draft.personality;
-  const pool = draft.eventType === "GOAL" ? goalPool(draft.minute, goalKind(draft.detail)) : KICKOFF_LINES;
-  return pickLine(pool, `${draft.seed ?? "voz"}:otra`, [...(draft.avoid ?? []), rejected, draft.personality ?? ""]);
-}
-
 export function acceptVoiceLine(draft: Draft, raw: string): Draft {
   const parts = raw.trim().replace(/^["“]|["”]$/g, "").split("\n").map((line) => line.trim()).filter(Boolean);
   const line = parts.length === 1 ? parts[0] : "";
   const avoid = (draft.avoid ?? []).map((item) => item.toLowerCase());
   const copied = Boolean(line) && avoid.some((item) => item.includes(line.toLowerCase()));
   const offMoment = Boolean(line) && !voiceFits(line, draft.minute);
-  if (copied || offMoment) {
-    const personality = replacementLine(draft, line);
-    if (!personality || personality === draft.personality) return draft;
-    return { ...draft, personality, text: [...draft.locked, personality].join("\n"), voice: "plantilla" };
-  }
-  if (parts.length !== 1 || SCORE.test(line) || line.length > 240 || draft.locked.some((locked) => line.includes(locked))) return draft;
+  const rejected = !line || copied || offMoment || parts.length !== 1 || SCORE.test(line) || line.length > 240 || draft.locked.some((locked) => line.includes(locked));
+  if (rejected) return { ...draft, personality: null, text: draft.locked.join("\n"), voice: "plantilla" };
   return { ...draft, personality: line, text: [...draft.locked, line].join("\n"), voice: "openai" };
 }
 

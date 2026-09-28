@@ -3,7 +3,7 @@ import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import { mentionsMatch } from "@/lib/engines/context";
 import { pickExpression } from "@/lib/engines/copy";
 import { memeScene } from "@/lib/engines/image-route";
-import { contradictsScore, halftimeText, pulseSituation, quietSlot, readPulse } from "@/lib/engines/match-pulse";
+import { contradictsScore, halftimeText, openMomentSituation, pulseSituation, quietSlot, readPulse } from "@/lib/engines/match-pulse";
 import { brightDataMissing, facebookPageUrls, pollSocialSearch, triggerSocialSearch } from "@/lib/integrations/bright-data";
 import { fetchMatchSides } from "@/lib/integrations/fixture-stats";
 import { reinterpretPage, writeMomentLine } from "@/lib/integrations/openai-voice";
@@ -92,9 +92,9 @@ export async function runHalftimePosts(env: Record<string, string | undefined> =
       });
       if (!sides) continue;
       const kind = readPulse(sides.home, sides.away);
-      const line = kind
-        ? await writeMomentLine({
-            situation: pulseSituation({
+      const voice = await writeMomentLine({
+        situation: kind
+          ? pulseSituation({
               home: match.home_team,
               away: match.away_team,
               minute: match.minute,
@@ -102,12 +102,19 @@ export async function runHalftimePosts(env: Record<string, string | undefined> =
               homeScore: match.home_score as number,
               awayScore: match.away_score as number,
               place: "medio",
+            })
+          : openMomentSituation({
+              home: match.home_team,
+              away: match.away_team,
+              minute: match.minute,
+              homeScore: match.home_score as number,
+              awayScore: match.away_score as number,
             }),
-            avoid: await recentLines(client),
-            minute: match.minute,
-          }, env)
-        : null;
-      if (kind && !line) continue;
+        avoid: await recentLines(client),
+        minute: match.minute,
+      }, env);
+      if (!voice.spoke) continue;
+      const line = voice.line;
       created += await insertPost(client, {
         kind: "HALFTIME",
         key: `halftime:${match.fixture_id}`,
@@ -233,7 +240,7 @@ export async function runQuietPosts(env: Record<string, string | undefined> = pr
       const kind = sides ? readPulse(sides.home, sides.away) : null;
       if (!kind || match.home_score == null || match.away_score == null) continue;
       if (slot === 1) await pageQuote(client, match, env);
-      const line = await writeMomentLine({
+      const voice = await writeMomentLine({
         situation: pulseSituation({
           home: match.home_team,
           away: match.away_team,
@@ -246,7 +253,8 @@ export async function runQuietPosts(env: Record<string, string | undefined> = pr
         avoid: await recentLines(client),
         minute: match.minute,
       }, env);
-      if (!line) continue;
+      if (!voice.spoke || !voice.line) continue;
+      const line = voice.line;
       created += await insertPost(client, { kind: "PULSE", key: `pulse:${match.fixture_id}:${slot}`, body: line });
     }
   } finally {

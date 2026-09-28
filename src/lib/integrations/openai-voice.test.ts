@@ -19,10 +19,11 @@ describe("voz", () => {
     expect(next.personality).not.toMatch(/\d+\s*-\s*\d+/);
   });
 
-  it("se queda con la plantilla si el modelo mete el marcador", () => {
+  it("si el modelo mete el marcador, esa frase no se publica", () => {
     const next = acceptVoiceLine(draft, "Qué golazo, ya van 1-0.");
     expect(next.voice).toBe("plantilla");
-    expect(next.personality).toBe(draft.personality);
+    expect(next.personality).toBeNull();
+    expect(next.text).toBe(draft.locked.join("\n"));
   });
 
   it("un gol del segundo tiempo no dice que apenas llega", () => {
@@ -62,7 +63,8 @@ describe("voz", () => {
     expect(penalty.personality).toMatch(/penal/i);
     expect(voiceFits("Y yo que apenas estaba calentando servidores. 🤖", 79)).toBe(false);
     const rejected = acceptVoiceLine(late, "Y yo que apenas estaba calentando servidores. 🤖");
-    expect(rejected.personality).not.toMatch(/calentando/i);
+    expect(rejected.personality).toBeNull();
+    expect(rejected.text).not.toMatch(/calentando/i);
   });
 
   it("el VAR no le pone el gol a otro jugador", () => {
@@ -102,10 +104,10 @@ describe("voz", () => {
     expect(ownGoal.lockedLines[0]).toBe("Autogol de Francisco Nevarez.");
   });
 
-  it("no llama a OpenAI si no hay línea de personalidad", async () => {
+  it("no llama a OpenAI si no hay nada que decir", async () => {
     const fetchImpl = vi.fn();
-    const quiet = { ...draft, personality: null, text: draft.locked.join("\n") };
-    const next = await applyVoice(quiet, { OPENAI_API_KEY: "presente" }, fetchImpl);
+    const empty = { locked: [], personality: null, text: "", voice: "plantilla" as const };
+    const next = await applyVoice(empty, { OPENAI_API_KEY: "presente" }, fetchImpl);
     expect(next.voice).toBe("plantilla");
     expect(fetchImpl).not.toHaveBeenCalled();
   });

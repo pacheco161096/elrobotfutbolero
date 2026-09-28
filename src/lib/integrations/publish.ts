@@ -131,6 +131,7 @@ export async function runPreMatchPosts(
     );
     for (const match of matches.rows) {
       const voiced = await applyVoice(previaDraft({ home: match.home_team, away: match.away_team, kickoff: match.kickoff_at }), env);
+      if (voiced.voice !== "openai" || !voiced.personality) continue;
       await client.query(
         `INSERT INTO posts (kind, idempotency_key, body, facts, tone, image_mode, status, format)
          VALUES ('PREVIA', $1, $2, '{}'::jsonb, 'normal', 'texto', 'queued', 'texto')
@@ -176,6 +177,7 @@ export async function runKickoffPosts(
         seed: match.fixture_id,
         avoid: recent.rows.map((row) => row.body),
       }), env);
+      if (voiced.voice !== "openai" || !voiced.personality) continue;
       const inserted = await client.query(
         `INSERT INTO posts (kind, idempotency_key, body, facts, tone, image_mode, status, format)
          VALUES ('KICKOFF', $1, $2, '{}'::jsonb, 'normal', 'texto', 'queued', 'texto')

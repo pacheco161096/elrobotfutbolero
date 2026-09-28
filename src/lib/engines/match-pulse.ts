@@ -56,6 +56,17 @@ export function pulseSituation(input: {
   return `${input.home} contra ${input.away}. ${when}. El marcador real es ${input.homeScore}-${input.awayScore}; no lo escribas. ${reading} ${place}`;
 }
 
+export function openMomentSituation(input: {
+  home: string;
+  away: string;
+  minute: number | null;
+  homeScore: number;
+  awayScore: number;
+}): string {
+  const when = input.minute == null ? "sin minuto confirmado" : `minuto ${input.minute}`;
+  return `${input.home} contra ${input.away}. Medio tiempo, ${when}. El marcador real es ${input.homeScore}-${input.awayScore}; no lo escribas. Las estadísticas no alcanzan para decir que nadie llega ni que un equipo tiene el balón sin peligro. No inventes esa lectura. Una línea del momento, o NADA.`;
+}
+
 export function acceptMomentLine(raw: string, avoid: string[], minute: number | null): string | null {
   const line = raw.trim().replace(/^["“]|["”]$/g, "");
   if (!line || /^nada\.?$/i.test(line) || line.includes("\n") || line.length > 220 || /\d/.test(line)) return null;

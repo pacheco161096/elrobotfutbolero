@@ -19,7 +19,7 @@ export async function applyVoice(
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Draft> {
-  if (!env.OPENAI_API_KEY || !draft.personality) return draft;
+  if (!env.OPENAI_API_KEY || (!draft.personality && !draft.situation && draft.locked.length === 0)) return draft;
   const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -102,8 +102,8 @@ export async function writeMomentLine(
   input: { situation: string; avoid: string[]; minute: number | null },
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
-): Promise<string | null> {
-  if (!env.OPENAI_API_KEY || !input.situation.trim()) return null;
+): Promise<{ spoke: boolean; line: string | null }> {
+  if (!env.OPENAI_API_KEY || !input.situation.trim()) return { spoke: false, line: null };
   const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -125,7 +125,7 @@ export async function writeMomentLine(
       ],
     }),
   });
-  if (!response.ok) return null;
+  if (!response.ok) return { spoke: false, line: null };
   const body = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number };
@@ -136,5 +136,5 @@ export async function writeMomentLine(
   if (promptTokens || completionTokens) {
     await recordAiUsage({ area: "voz", model, promptTokens, completionTokens, usd: estimateUsd(model, promptTokens, completionTokens) }, env);
   }
-  return acceptMomentLine(body.choices?.[0]?.message?.content ?? "", input.avoid, input.minute);
+  return { spoke: true, line: acceptMomentLine(body.choices?.[0]?.message?.content ?? "", input.avoid, input.minute) };
 }
