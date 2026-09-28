@@ -4,6 +4,7 @@ import { secondContextPost } from "@/lib/engines/context";
 import { enqueueJob, nextJob } from "@/lib/engines/jobs";
 import { pollingIntervalMs, transition, watchdogFindings } from "@/lib/engines/match-state";
 import { expressionFile, pickExpression } from "@/lib/engines/copy";
+import { teamSpoken } from "@/lib/engines/team-names";
 import { runPipeline } from "@/lib/engines/pipeline";
 import { storyKeyFor } from "@/lib/engines/story";
 import { classifyTruth } from "@/lib/engines/truth";
@@ -52,7 +53,7 @@ describe("pipeline", () => {
     expect(result.flash?.facts.home_score).toBe(1);
     expect(result.publication.status).toBe("pending_credentials");
     expect(result.jobs[0]).toMatchObject({ type: "FLASH", priority: 100 });
-    expect(result.draft?.locked.join("\n")).toContain("Querétaro 1-0 Guadalajara.");
+    expect(result.draft?.locked.join("\n")).toContain(`${teamSpoken("Querétaro", "fx:GOAL:home")} 1-0 ${teamSpoken("Guadalajara", "fx:GOAL:away")}.`);
     expect(result.draft?.personality).not.toMatch(/\d+\s*-\s*\d+/);
     expect(result.draft?.text.startsWith(result.draft.locked.join("\n"))).toBe(true);
   });
@@ -114,7 +115,7 @@ describe("pipeline", () => {
     expect(result.americaTag).toBe(true);
     expect(result.flash?.facts.home_score).toBe(1);
     expect(result.flash?.facts.away_score).toBe(0);
-    expect(result.draft?.locked.join(" ")).toContain("América 1-0 Pumas.");
+    expect(result.draft?.locked.join(" ")).toContain(`${teamSpoken("América", "fx:GOAL:home")} 1-0 ${teamSpoken("Pumas", "fx:GOAL:away")}.`);
     expect(result.draft?.personality).toBe("Otra vez el América. Qué raro. 🤖");
   });
 
@@ -169,7 +170,7 @@ describe("redacción y cola", () => {
       now,
     });
     expect(result.tone).toBe("informar_sin_humor");
-    expect(result.draft?.locked.join("\n")).toContain("Querétaro 1-0 Guadalajara.");
+    expect(result.draft?.locked.join("\n")).toContain(`${teamSpoken("Querétaro", "fx:GOAL:home")} 1-0 ${teamSpoken("Guadalajara", "fx:GOAL:away")}.`);
     expect(result.draft?.personality).toBeNull();
   });
 

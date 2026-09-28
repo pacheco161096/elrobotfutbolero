@@ -3,6 +3,7 @@ import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import { mentionsMatch, reviewSocialHits } from "@/lib/engines/context";
 import { pickExpression } from "@/lib/engines/copy";
 import { imageRoute, matchImageQuery, memeScene } from "@/lib/engines/image-route";
+import { teamSpoken } from "@/lib/engines/team-names";
 import { brightDataMissing, facebookPageUrls, pollSocialSearch, triggerSocialSearch } from "@/lib/integrations/bright-data";
 import { reinterpretPage } from "@/lib/integrations/openai-voice";
 import { generateRobotImage } from "@/lib/integrations/robot-image";
@@ -138,7 +139,7 @@ export async function runSocialContext(
       const line = await reinterpretPage({
         source: pick.text,
         author: pick.author,
-        situation: `Reacción a lo que se dice de ${candidate.home_team} contra ${candidate.away_team}. El dato del marcador ya salió aparte. Aquí solo cabe un ángulo propio.`,
+        situation: `Reacción a lo que se dice de ${teamSpoken(candidate.home_team, `${candidate.story_key}:home`)} contra ${teamSpoken(candidate.away_team, `${candidate.story_key}:away`)}. El dato del marcador ya salió aparte. Nómbralos así, en español. Aquí solo cabe un ángulo propio.`,
       }, env, fetchImpl);
       if (line) {
         await refreshOverrides(databaseUrl);

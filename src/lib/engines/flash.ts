@@ -1,4 +1,5 @@
 import { goalKind } from "@/lib/engines/copy";
+import { sameTeam, teamSpoken } from "@/lib/engines/team-names";
 import type { IncomingEvent } from "@/lib/domain/types";
 import type { ClaimStatus } from "@/lib/domain/types";
 
@@ -17,8 +18,16 @@ function scoreMissing(event: IncomingEvent): string[] {
   return missing;
 }
 
+function side(event: IncomingEvent, name: string, role: "home" | "away" | "team"): string {
+  if (role === "team") {
+    if (event.team && sameTeam(event.team, event.homeTeam)) return side(event, event.homeTeam, "home");
+    if (event.team && sameTeam(event.team, event.awayTeam)) return side(event, event.awayTeam, "away");
+  }
+  return teamSpoken(name, `${event.fixtureId}:${event.eventType}:${role}`);
+}
+
 function scoreLine(event: IncomingEvent): string {
-  return `${event.homeTeam} ${event.homeScore}-${event.awayScore} ${event.awayTeam}.`;
+  return `${side(event, event.homeTeam, "home")} ${event.homeScore}-${event.awayScore} ${side(event, event.awayTeam, "away")}.`;
 }
 
 export function buildFlash(event: IncomingEvent, causeStatus: ClaimStatus | null): FlashCard {
@@ -47,19 +56,19 @@ export function buildFlash(event: IncomingEvent, causeStatus: ClaimStatus | null
     if (missing.length === 0) {
       const kind = goalKind(event.detail);
       if (kind === "autogol") lockedLines.push(event.player ? `Autogol de ${event.player}.` : "Autogol.", scoreLine(event));
-      else if (kind === "penal") lockedLines.push(event.player ? `Penal de ${event.player}.` : `Penal de ${event.team}.`, scoreLine(event));
-      else lockedLines.push(`⚽ GOOOOL DE ${event.team?.toUpperCase()}.`, scoreLine(event));
+      else if (kind === "penal") lockedLines.push(event.player ? `Penal de ${event.player}.` : `Penal de ${side(event, event.team ?? "", "team")}.`, scoreLine(event));
+      else lockedLines.push(`⚽ GOOOOL DE ${side(event, event.team ?? "", "team").toUpperCase()}.`, scoreLine(event));
     }
   } else if (event.eventType === "RED_CARD") {
     if (!event.player) missing.push("jugador");
     if (!event.team) missing.push("equipo");
-    if (event.player && event.team) lockedLines.push(`Expulsión de ${event.player}, ${event.team}.`);
+    if (event.player && event.team) lockedLines.push(`Expulsión de ${event.player}, ${side(event, event.team, "team")}.`);
     if (event.homeScore != null && event.awayScore != null) lockedLines.push(scoreLine(event));
   } else if (event.eventType === "PENALTY") {
     if (!event.team) missing.push("equipo beneficiado");
     missing.push(...scoreMissing(event).map(() => "marcador actual"));
     if (event.team && event.homeScore != null && event.awayScore != null) {
-      lockedLines.push(`Penal para ${event.team}.`, scoreLine(event));
+      lockedLines.push(`Penal para ${side(event, event.team, "team")}.`, scoreLine(event));
     }
   } else if (event.eventType === "MISSED_PENALTY") {
     if (!event.player && !event.team) missing.push("jugador o equipo");

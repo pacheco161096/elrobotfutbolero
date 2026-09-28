@@ -4,6 +4,7 @@ import { mentionsMatch } from "@/lib/engines/context";
 import { pickExpression } from "@/lib/engines/copy";
 import { memeScene } from "@/lib/engines/image-route";
 import { contradictsScore, halftimeText, openMomentSituation, pulseSituation, quietSlot, readPulse } from "@/lib/engines/match-pulse";
+import { teamSpoken } from "@/lib/engines/team-names";
 import { brightDataMissing, facebookPageUrls, pollSocialSearch, triggerSocialSearch } from "@/lib/integrations/bright-data";
 import { fetchMatchSides } from "@/lib/integrations/fixture-stats";
 import { reinterpretPage, writeMomentLine } from "@/lib/integrations/openai-voice";
@@ -92,11 +93,13 @@ export async function runHalftimePosts(env: Record<string, string | undefined> =
       });
       if (!sides) continue;
       const kind = readPulse(sides.home, sides.away);
+      const home = teamSpoken(match.home_team, `${match.fixture_id}:medio:home`);
+      const away = teamSpoken(match.away_team, `${match.fixture_id}:medio:away`);
       const voice = await writeMomentLine({
         situation: kind
           ? pulseSituation({
-              home: match.home_team,
-              away: match.away_team,
+              home,
+              away,
               minute: match.minute,
               kind,
               homeScore: match.home_score as number,
@@ -104,8 +107,8 @@ export async function runHalftimePosts(env: Record<string, string | undefined> =
               place: "medio",
             })
           : openMomentSituation({
-              home: match.home_team,
-              away: match.away_team,
+              home,
+              away,
               minute: match.minute,
               homeScore: match.home_score as number,
               awayScore: match.away_score as number,
@@ -119,8 +122,8 @@ export async function runHalftimePosts(env: Record<string, string | undefined> =
         kind: "HALFTIME",
         key: `halftime:${match.fixture_id}`,
         body: halftimeText({
-          home: match.home_team,
-          away: match.away_team,
+          home,
+          away,
           homeScore: match.home_score as number,
           awayScore: match.away_score as number,
           line,
@@ -213,7 +216,7 @@ export async function runQuietPosts(env: Record<string, string | undefined> = pr
           const line = await reinterpretPage({
             source: quote.source,
             author: quote.author,
-            situation: `Partido en curso entre ${match.home_team} y ${match.away_team}, minuto ${match.minute ?? "sin confirmar"}. No hay un evento nuevo. Si el texto ajeno no aporta un ángulo, responde NADA.`,
+            situation: `Partido en curso entre ${teamSpoken(match.home_team, `${match.fixture_id}:cita:home`)} y ${teamSpoken(match.away_team, `${match.fixture_id}:cita:away`)}, minuto ${match.minute ?? "sin confirmar"}. No hay un evento nuevo. Nómbralos así, en español. Si el texto ajeno no aporta un ángulo, responde NADA.`,
           }, env);
           if (line) {
             const image = overrides.pauseImages
@@ -242,8 +245,8 @@ export async function runQuietPosts(env: Record<string, string | undefined> = pr
       if (slot === 1) await pageQuote(client, match, env);
       const voice = await writeMomentLine({
         situation: pulseSituation({
-          home: match.home_team,
-          away: match.away_team,
+          home: teamSpoken(match.home_team, `${match.fixture_id}:pulso:home`),
+          away: teamSpoken(match.away_team, `${match.fixture_id}:pulso:away`),
           minute: match.minute,
           kind,
           homeScore: match.home_score as number,

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { acceptVoiceLine, composeDraft, voiceFits } from "@/lib/engines/copy";
+import { teamSpoken } from "@/lib/engines/team-names";
 import { buildFlash } from "@/lib/engines/flash";
 import { applyVoice } from "@/lib/integrations/openai-voice";
 
@@ -83,7 +84,10 @@ describe("voz", () => {
       existingStories: [],
       recentPosts: [],
     }, null);
-    expect(card.lockedLines.join(" ")).toBe("El VAR confirmó el gol. Leon 1-0 FC Juarez.");
+    const home = teamSpoken("Leon", "1550982:VAR:home");
+    const away = teamSpoken("FC Juarez", "1550982:VAR:away");
+    expect(card.lockedLines.join(" ")).toBe(`El VAR confirmó el gol. ${home} 1-0 ${away}.`);
+    expect(card.lockedLines.join(" ")).not.toMatch(/Juarez|Leon/);
     expect(card.lockedLines.join(" ")).not.toContain("Jurado");
     const ownGoal = buildFlash({
       fixtureId: "1550982",

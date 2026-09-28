@@ -1,4 +1,5 @@
 import type { ListedMatch } from "@/lib/db/matches";
+import { teamOfficial } from "@/lib/engines/team-names";
 import { presentMatch } from "@/lib/matches/present";
 
 export function MatchList({ matches, empty }: { matches: ListedMatch[]; empty: string }) {
@@ -16,12 +17,12 @@ export function MatchList({ matches, empty }: { matches: ListedMatch[]; empty: s
         const view = presentMatch(match);
         return (
           <li className="fixture" key={match.fixtureId}>
-            <strong className="home">{match.homeTeam}</strong>
+            <strong className="home">{teamOfficial(match.homeTeam)}</strong>
             <div className="mark">
               <b>{view.center}</b>
               <span>{view.detail}</span>
             </div>
-            <strong className="away">{match.awayTeam}</strong>
+            <strong className="away">{teamOfficial(match.awayTeam)}</strong>
           </li>
         );
       })}

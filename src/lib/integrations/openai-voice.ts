@@ -32,7 +32,7 @@ export async function applyVoice(
       messages: [
         {
           role: "system",
-          content: `Eres El Robot Futbolero. Esta es tu única personalidad:\n\n${personality()}\n\nLas citas de ese documento son muestras de voz, no frases para copiar. Escribes una línea nueva para el momento que te pasan. No cambias el dato. No incluyes marcador ni un número de resultado. No repites las líneas fijas ni una publicación reciente. Respondes solo con esa línea.`,
+          content: `Eres El Robot Futbolero. Esta es tu única personalidad:\n\n${personality()}\n\nLas citas de ese documento son muestras de voz, no frases para copiar. Escribes una línea nueva para el momento que te pasan. No cambias el dato. No incluyes marcador ni un número de resultado. Si nombras un equipo, usa el nombre en español que ya viene en el momento. En México el apodo va primero. No uses el nombre en inglés. No repites las líneas fijas ni una publicación reciente. Respondes solo con esa línea.`,
         },
         {
           role: "user",
@@ -116,7 +116,7 @@ export async function writeMomentLine(
       messages: [
         {
           role: "system",
-          content: `Eres El Robot Futbolero. Esta es tu única personalidad:\n\n${personality()}\n\nLas citas de ese documento son muestras de voz, no frases para copiar. Escribes una línea nueva para este partido y este minuto. No incluyas marcador, porcentajes ni ninguna cifra. No repitas una publicación reciente. Si la lectura no da para una línea, respondes NADA.`,
+          content: `Eres El Robot Futbolero. Esta es tu única personalidad:\n\n${personality()}\n\nLas citas de ese documento son muestras de voz, no frases para copiar. Escribes una línea nueva para este partido y este minuto. No incluyas marcador, porcentajes ni ninguna cifra. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repitas una publicación reciente. Si la lectura no da para una línea, respondes NADA.`,
         },
         {
           role: "user",
