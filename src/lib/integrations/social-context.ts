@@ -2,10 +2,11 @@ import pg from "pg";
 import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import { mentionsMatch, reviewSocialHits } from "@/lib/engines/context";
 import { pickExpression } from "@/lib/engines/copy";
+import { backupImageQuery, backupLocked, backupSituation, type BackupEvent } from "@/lib/engines/backup-post";
 import { imageRoute, matchImageQuery, memeScene } from "@/lib/engines/image-route";
 import { teamSpoken } from "@/lib/engines/team-names";
 import { brightDataMissing, facebookPageUrls, pollSocialSearch, triggerSocialSearch } from "@/lib/integrations/bright-data";
-import { reinterpretPage } from "@/lib/integrations/openai-voice";
+import { applyVoice, reinterpretPage } from "@/lib/integrations/openai-voice";
 import { generateRobotImage } from "@/lib/integrations/robot-image";
 import { searchMatchImage } from "@/lib/integrations/web-image";
 
@@ -21,7 +22,7 @@ type Candidate = {
   job_id: string | null;
   job_status: string | null;
   attempts: number | null;
-  payload: { snapshotId?: string } | null;
+  payload: { snapshotId?: string; phase?: string } | null;
 };
 
 export type SocialContextResult = {
@@ -81,6 +82,122 @@ async function saveReview(
   );
 }
 
+type BackupRow = {
+  fixture_id: string;
+  event_type: string;
+  minute: number | null;
+  player: string | null;
+  team: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  detail: string | null;
+  home_team: string;
+  away_team: string;
+  goal_number: number | null;
+};
+
+function eventFromRow(storyKey: string, row: BackupRow): BackupEvent {
+  return {
+    eventType: row.event_type,
+    minute: row.minute,
+    player: row.player,
+    team: row.team,
+    detail: row.detail,
+    homeTeam: row.home_team,
+    awayTeam: row.away_team,
+    homeScore: row.home_score,
+    awayScore: row.away_score,
+    goalNumber: row.event_type === "GOAL" && row.detail && !/own/i.test(row.detail) ? row.goal_number : null,
+    storyKey,
+  };
+}
+
+function pickBackupRow(storyKey: string, rows: BackupRow[]): BackupRow | null {
+  const exact = rows.find((row) => {
+    const minute = row.minute ?? "x";
+    const team = row.team ?? "x";
+    const player = row.player ?? "na";
+    return storyKey === `fixture:${row.fixture_id}:gol:${minute}:${team}`
+      || storyKey === `fixture:${row.fixture_id}:${row.event_type}:${minute}:${team}:${player}`;
+  });
+  if (exact) return exact;
+  const loose = rows.find((row) => row.minute != null && row.team && storyKey.includes(`:${row.minute}:`) && storyKey.toLowerCase().includes(row.team.toLowerCase()));
+  if (loose) return loose;
+  if (storyKey.endsWith(":controversia") || storyKey.endsWith(":suspension")) return rows[0] ?? null;
+  return null;
+}
+
+async function queueBackup(
+  client: pg.Client,
+  candidate: Candidate,
+  env: Record<string, string | undefined>,
+  fetchImpl: typeof fetch,
+): Promise<"queued" | "skip" | "retry"> {
+  const rows = await client.query<BackupRow>(
+    `SELECT e.fixture_id, e.event_type, e.minute, e.player, e.team, e.home_score, e.away_score,
+            e.payload->>'detail' AS detail, m.home_team, m.away_team,
+            (SELECT count(*)::int FROM match_events g
+              WHERE g.fixture_id = e.fixture_id AND g.event_type = 'GOAL' AND g.team = e.team
+                AND (g.minute < e.minute OR (g.minute = e.minute AND g.created_at <= e.created_at))) AS goal_number
+     FROM stories s
+     JOIN matches m ON m.fixture_id = s.fixture_id
+     JOIN match_events e ON e.fixture_id = s.fixture_id AND e.event_type = s.last_event_type
+     WHERE s.id = $1
+     ORDER BY e.created_at DESC`,
+    [candidate.story_id],
+  );
+  const row = pickBackupRow(candidate.story_key, rows.rows);
+  if (!row) return "skip";
+  const event = eventFromRow(candidate.story_key, row);
+  const locked = backupLocked(event);
+  const query = backupImageQuery(event);
+  if (!locked || !query) return "skip";
+  const recent = await client.query<{ body: string }>(
+    `SELECT body FROM posts WHERE body IS NOT NULL ORDER BY created_at DESC LIMIT 8`,
+  );
+  const draft = await applyVoice({
+    locked,
+    personality: null,
+    text: locked.join("\n"),
+    voice: "plantilla",
+    eventType: event.eventType,
+    minute: event.minute,
+    situation: backupSituation(locked),
+    avoid: recent.rows.map((item) => item.body),
+  }, env, fetchImpl);
+  if (draft.voice !== "openai" || !draft.personality) return "retry";
+  await refreshOverrides(env.DATABASE_URL ?? "");
+  if (getOverrides().pauseImages) return "skip";
+  const image = await searchMatchImage({
+    query,
+    teams: [event.player, event.homeTeam, event.awayTeam].filter((item): item is string => Boolean(item)),
+  }, fetchImpl);
+  if (!image) return "retry";
+  await client.query(
+    `INSERT INTO posts (story_id, kind, idempotency_key, body, facts, tone, image_mode, status, format)
+     VALUES ($1, 'CONTEXT', $2, $3, $4::jsonb, 'normal', 'fotografia_real', 'queued', 'texto')
+     ON CONFLICT (idempotency_key) DO NOTHING`,
+    [candidate.story_id, `context-post:${candidate.story_key}`, draft.text, JSON.stringify({ imageUrl: image })],
+  );
+  return "queued";
+}
+
+async function settleBackup(
+  client: pg.Client,
+  jobKey: string,
+  outcome: "queued" | "skip" | "retry",
+): Promise<SocialContextResult> {
+  if (outcome === "retry") {
+    await client.query(
+      `UPDATE jobs SET status = 'running', payload = payload || '{"phase":"backup"}'::jsonb, updated_at = now() WHERE idempotency_key = $1`,
+      [jobKey],
+    );
+    return { status: "pending", checked: 1 };
+  }
+  await client.query(`UPDATE jobs SET status = 'done', last_error = NULL, updated_at = now() WHERE idempotency_key = $1`, [jobKey]);
+  return { status: "ready", checked: 1 };
+}
+
 export async function runSocialContext(
   env: Record<string, string | undefined> = process.env,
   now = new Date(),
@@ -93,10 +210,11 @@ export async function runSocialContext(
   try {
     const candidate = await loadCandidate(client, now);
     if (!candidate) return { status: "idle", checked: 0 };
+    const jobKey = `bright:${candidate.story_key}`;
+    if (candidate.payload?.phase === "backup") return settleBackup(client, jobKey, await queueBackup(client, candidate, env, fetchImpl));
     const missing = brightDataMissing(env);
     if (missing.length) return { status: "pending_credentials", checked: 1, missing };
     const pages = facebookPageUrls(env.BRIGHT_DATA_PAGE_URLS);
-    const jobKey = `bright:${candidate.story_key}`;
     const snapshotId = candidate.job_status === "running" ? candidate.payload?.snapshotId : undefined;
 
     if (!snapshotId) {
@@ -125,16 +243,14 @@ export async function runSocialContext(
     const polled = await pollSocialSearch(snapshotId, env, fetchImpl);
     if (polled.status === "pending") return { status: "pending", checked: 1 };
     if (polled.status === "error") {
-      await client.query(`UPDATE jobs SET status = 'failed', last_error = $2, updated_at = now() WHERE idempotency_key = $1`, [
-        jobKey,
-        polled.message,
-      ]);
-      return { status: "error", checked: 1, message: polled.message };
+      await client.query(`UPDATE jobs SET last_error = $2, updated_at = now() WHERE idempotency_key = $1`, [jobKey, polled.message]);
+      return settleBackup(client, jobKey, await queueBackup(client, candidate, env, fetchImpl));
     }
     const review = reviewSocialHits({ known: await knownClaims(client, candidate.story_id, candidate.title), hits: polled.hits });
     await saveReview(client, candidate.story_id, review);
     const related = review.claims.filter((claim) => mentionsMatch(claim.text, [candidate.home_team, candidate.away_team]));
     const pick = related[0];
+    let posted = false;
     if (pick) {
       const line = await reinterpretPage({
         source: pick.text,
@@ -170,8 +286,10 @@ export async function runSocialContext(
             image ? (route === "buscar" ? "fotografia_real" : "bot_generada") : "texto",
           ],
         );
+        posted = true;
       }
     }
+    if (!posted) return settleBackup(client, jobKey, await queueBackup(client, candidate, env, fetchImpl));
     await client.query(`UPDATE jobs SET status = 'done', last_error = NULL, updated_at = now() WHERE idempotency_key = $1`, [jobKey]);
     return { status: "ready", checked: 1, decision: review.decision };
   } finally {
