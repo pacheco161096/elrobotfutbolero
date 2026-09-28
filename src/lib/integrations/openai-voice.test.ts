@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { acceptVoiceLine, composeDraft } from "@/lib/engines/copy";
+import { acceptVoiceLine, composeDraft, voiceFits } from "@/lib/engines/copy";
+import { buildFlash } from "@/lib/engines/flash";
 import { applyVoice } from "@/lib/integrations/openai-voice";
 
 const draft = composeDraft({
@@ -22,6 +23,42 @@ describe("voz", () => {
     const next = acceptVoiceLine(draft, "Qué golazo, ya van 1-0.");
     expect(next.voice).toBe("plantilla");
     expect(next.personality).toBe(draft.personality);
+  });
+
+  it("un gol del segundo tiempo no dice que apenas llega", () => {
+    const late = composeDraft({
+      eventType: "GOAL",
+      lockedLines: ["⚽ GOOOOL DE LEON.", "Leon 1-0 FC Juarez."],
+      tone: "normal",
+      america: false,
+      minute: 79,
+      seed: "1550982:GOAL:79",
+    });
+    expect(late.personality).not.toMatch(/calentando|apenas estaba/i);
+    expect(late.situation).toContain("segundo tiempo");
+    expect(voiceFits("Y yo que apenas estaba calentando servidores. 🤖", 79)).toBe(false);
+    const rejected = acceptVoiceLine(late, "Y yo que apenas estaba calentando servidores. 🤖");
+    expect(rejected.personality).not.toMatch(/calentando/i);
+  });
+
+  it("el VAR no le pone el gol a otro jugador", () => {
+    const card = buildFlash({
+      fixtureId: "1550982",
+      eventType: "VAR",
+      player: "Sebastián Jurado",
+      team: "FC Juarez",
+      detail: "Goal confirmed",
+      homeTeam: "Leon",
+      awayTeam: "FC Juarez",
+      homeScore: 1,
+      awayScore: 0,
+      origin: "api_event",
+      sources: [],
+      existingStories: [],
+      recentPosts: [],
+    }, null);
+    expect(card.lockedLines.join(" ")).toBe("El VAR confirmó el gol. Leon 1-0 FC Juarez.");
+    expect(card.lockedLines.join(" ")).not.toContain("Jurado");
   });
 
   it("no llama a OpenAI si no hay línea de personalidad", async () => {

@@ -1,11 +1,20 @@
-import type { Draft } from "@/lib/engines/copy";
+import { KICKOFF_LINES, pickLine, type Draft } from "@/lib/engines/copy";
 
 const SCORE = /\d+\s*[-–]\s*\d+/;
 
-export function kickoffDraft(input: { home: string; away: string }): Draft {
+export function kickoffDraft(input: { home: string; away: string; seed?: string; avoid?: string[] }): Draft {
   const locked = [`Ya empezó ${input.home} contra ${input.away}.`];
-  const personality = "Yo ya estoy viendo. 🤖";
-  return { locked, personality, text: [...locked, personality].join("\n"), voice: "plantilla" };
+  const personality = pickLine(KICKOFF_LINES, input.seed ?? `${input.home}:${input.away}`, input.avoid ?? []);
+  return {
+    locked,
+    personality,
+    text: [...locked, personality].join("\n"),
+    voice: "plantilla",
+    eventType: "KICKOFF",
+    seed: input.seed ?? `${input.home}:${input.away}`,
+    situation: "El partido acaba de empezar. Es el pitazo, no un gol. No repitas el pitazo anterior.",
+    avoid: input.avoid ?? [],
+  };
 }
 
 export function previaDraft(input: { home: string; away: string; kickoff: Date }): Draft {

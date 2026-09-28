@@ -30,11 +30,11 @@ export async function applyVoice(
       messages: [
         {
           role: "system",
-          content: `Eres El Robot Futbolero. Esta es tu única personalidad:\n\n${personality()}\n\nReescribes una sola línea de personalidad. No cambias el dato. No incluyes marcador, goles ni ningún número de resultado. No repites las líneas fijas. Respondes solo con esa línea.`,
+          content: `Eres El Robot Futbolero. Esta es tu única personalidad:\n\n${personality()}\n\nLas citas de ese documento son muestras de voz, no frases para copiar. Escribes una línea nueva para el momento que te pasan. No cambias el dato. No incluyes marcador ni un número de resultado. No repites las líneas fijas ni una publicación reciente. Respondes solo con esa línea.`,
         },
         {
           role: "user",
-          content: `Líneas fijas, no las toques:\n${draft.locked.join("\n")}\n\nLínea de plantilla:\n${draft.personality}\n\nDevuelve solo la línea de personalidad.`,
+          content: `Momento:\n${draft.situation ?? "Un dato del partido."}\n\nLíneas fijas, no las toques:\n${draft.locked.join("\n")}\n\nNo repitas estas publicaciones:\n${(draft.avoid ?? []).slice(0, 6).join("\n") || "(ninguna)"}\n\nDevuelve solo la línea de personalidad.`,
         },
       ],
     }),

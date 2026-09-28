@@ -166,8 +166,16 @@ export async function runKickoffPosts(
          AND NOT EXISTS (SELECT 1 FROM posts p WHERE p.idempotency_key = 'kickoff:' || m.fixture_id)`,
       [KICKOFF_MINUTE],
     );
+    const recent = await client.query<{ body: string }>(
+      `SELECT body FROM posts WHERE kind = 'KICKOFF' AND body IS NOT NULL ORDER BY created_at DESC LIMIT 6`,
+    );
     for (const match of matches.rows) {
-      const voiced = await applyVoice(kickoffDraft({ home: match.home_team, away: match.away_team }), env);
+      const voiced = await applyVoice(kickoffDraft({
+        home: match.home_team,
+        away: match.away_team,
+        seed: match.fixture_id,
+        avoid: recent.rows.map((row) => row.body),
+      }), env);
       const inserted = await client.query(
         `INSERT INTO posts (kind, idempotency_key, body, facts, tone, image_mode, status, format)
          VALUES ('KICKOFF', $1, $2, '{}'::jsonb, 'normal', 'texto', 'queued', 'texto')

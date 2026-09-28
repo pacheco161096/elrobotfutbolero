@@ -115,7 +115,7 @@ describe("pipeline", () => {
     expect(result.flash?.facts.home_score).toBe(1);
     expect(result.flash?.facts.away_score).toBe(0);
     expect(result.draft?.locked.join(" ")).toContain("América 1-0 Pumas.");
-    expect(result.draft?.personality).toBe("Qué sorpresa… 🤖");
+    expect(result.draft?.personality).toBe("Otra vez el América. Qué raro. 🤖");
   });
 
   it("baja el humor si el tema es sensible", () => {
@@ -235,6 +235,7 @@ describe("api football", () => {
     });
     expect(result.flash?.valid).toBe(true);
     expect(result.flash?.lockedLines.join(" ")).toContain("revisa una jugada");
+    expect(result.flash?.lockedLines.join(" ")).not.toContain("Delantero");
     expect(result.flash?.lockedLines.join(" ")).not.toMatch(/\d+\s*[-–]\s*\d+/);
     expect(result.visual.mode).toBe("texto");
   });

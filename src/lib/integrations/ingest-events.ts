@@ -73,7 +73,14 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
           recentPosts: [],
         };
         const result = runPipeline(incoming, { credentials: readCredentials(env), overrides: getOverrides(), now: new Date() });
-        const draft = result.draft ? await applyVoice(result.draft, env) : null;
+        const recent = result.draft
+          ? await client.query<{ body: string }>(
+              `SELECT body FROM posts WHERE body IS NOT NULL AND kind IN ('FLASH', 'KICKOFF', 'HALFTIME', 'PULSE') ORDER BY created_at DESC LIMIT 8`,
+            )
+          : { rows: [] as Array<{ body: string }> };
+        const draft = result.draft
+          ? await applyVoice({ ...result.draft, avoid: recent.rows.map((row) => row.body) }, env)
+          : null;
         const story = await client.query(
           `INSERT INTO stories (story_key, fixture_id, title, status, last_event_type, home_score, away_score, claim_status)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)

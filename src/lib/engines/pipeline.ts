@@ -148,7 +148,14 @@ export function runPipeline(event: IncomingEvent, input: { credentials: Credenti
   const botImage = Boolean(event.botIsProtagonist || event.meme);
   const expression = pickExpression({ eventType: event.eventType, tone, meme: event.meme });
   const draft = flash?.valid && (decision === "PUBLISH_NOW" || decision === "PUBLISH_CONTEXT")
-    ? composeDraft({ eventType: event.eventType, lockedLines: flash.lockedLines, tone, america: americaTag })
+    ? composeDraft({
+        eventType: event.eventType,
+        lockedLines: flash.lockedLines,
+        tone,
+        america: americaTag,
+        minute: event.minute,
+        seed: `${event.fixtureId}:${event.eventType}:${event.minute ?? "x"}`,
+      })
     : null;
   return {
     idempotencyKey: key,
