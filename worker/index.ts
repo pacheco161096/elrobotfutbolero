@@ -1,5 +1,5 @@
 import { readCredentials } from "../src/lib/config/pending";
-import { getOverrides } from "../src/lib/control/overrides";
+import { refreshOverrides } from "../src/lib/control/overrides";
 import { liveWorkerTick } from "../src/lib/worker/tick";
 import { pollLive } from "../src/lib/worker/poll";
 
@@ -13,7 +13,7 @@ async function main(): Promise<void> {
     let nextMs = 60_000;
     const result = await liveWorkerTick({
       credentials: readCredentials(),
-      overrides: getOverrides(),
+      overrides: await refreshOverrides(process.env.DATABASE_URL),
       poll: async () => {
         const poll = await pollLive();
         nextMs = poll.nextMs;
