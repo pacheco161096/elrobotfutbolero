@@ -1,7 +1,12 @@
 import pg from "pg";
+import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import { mentionsMatch, reviewSocialHits } from "@/lib/engines/context";
+import { pickExpression } from "@/lib/engines/copy";
+import { imageRoute, matchImageQuery, memeScene } from "@/lib/engines/image-route";
 import { brightDataMissing, facebookPageUrls, pollSocialSearch, triggerSocialSearch } from "@/lib/integrations/bright-data";
-import { applyVoice } from "@/lib/integrations/openai-voice";
+import { reinterpretPage } from "@/lib/integrations/openai-voice";
+import { generateRobotImage } from "@/lib/integrations/robot-image";
+import { searchMatchImage } from "@/lib/integrations/web-image";
 
 const CONTEXT_EVENTS = ["GOAL", "RED_CARD", "PENALTY", "MISSED_PENALTY", "VAR", "HALFTIME", "FULL_TIME", "SUSPENDED"];
 
@@ -9,6 +14,7 @@ type Candidate = {
   story_id: string;
   story_key: string;
   title: string;
+  last_event_type: string;
   home_team: string;
   away_team: string;
   job_id: string | null;
@@ -28,7 +34,7 @@ export type SocialContextResult = {
 async function loadCandidate(client: pg.Client, now: Date): Promise<Candidate | null> {
   const since = new Date(now.getTime() - 30 * 60 * 1000);
   const result = await client.query<Candidate>(
-    `SELECT s.id::text AS story_id, s.story_key, s.title, m.home_team, m.away_team,
+    `SELECT s.id::text AS story_id, s.story_key, s.title, s.last_event_type, m.home_team, m.away_team,
             j.id::text AS job_id, j.status AS job_status, j.attempts, j.payload
      FROM stories s
      JOIN matches m ON m.fixture_id = s.fixture_id
@@ -129,25 +135,41 @@ export async function runSocialContext(
     const related = review.claims.filter((claim) => mentionsMatch(claim.text, [candidate.home_team, candidate.away_team]));
     const pick = related[0];
     if (pick) {
-      const quote = `${pick.author}: ${pick.text}`.replace(/\s+/g, " ").trim().slice(0, 220);
-      const voiced = await applyVoice({
-        locked: [quote],
-        personality: "Sigo el partido.",
-        text: `${quote}\nSigo el partido.`,
-        voice: "plantilla",
+      const line = await reinterpretPage({
+        source: pick.text,
+        author: pick.author,
+        situation: `Reacción a lo que se dice de ${candidate.home_team} contra ${candidate.away_team}. El dato del marcador ya salió aparte. Aquí solo cabe un ángulo propio.`,
       }, env, fetchImpl);
-      await client.query(
-        `INSERT INTO posts (story_id, kind, idempotency_key, body, facts, tone, image_mode, status, format)
-         VALUES ($1, 'CONTEXT', $2, $3, $4::jsonb, 'normal', $5, 'queued', 'texto')
-         ON CONFLICT (idempotency_key) DO NOTHING`,
-        [
-          candidate.story_id,
-          `context-post:${candidate.story_key}`,
-          voiced.text,
-          JSON.stringify({ imageUrl: pick.imageUrl, source: pick.author }),
-          pick.imageUrl ? "fotografia_real" : "texto",
-        ],
-      );
+      if (line) {
+        await refreshOverrides(databaseUrl);
+        const route = imageRoute({ eventType: candidate.last_event_type, source: pick.text, line });
+        const image = getOverrides().pauseImages
+          ? null
+          : route === "buscar"
+            ? await searchMatchImage({
+                query: matchImageQuery({ home: candidate.home_team, away: candidate.away_team, eventType: candidate.last_event_type }),
+                teams: [candidate.home_team, candidate.away_team],
+                avoid: pick.imageUrl,
+              }, fetchImpl)
+            : await generateRobotImage(
+                pickExpression({ eventType: candidate.last_event_type, tone: "normal" }),
+                env,
+                fetchImpl,
+                memeScene(line),
+              );
+        await client.query(
+          `INSERT INTO posts (story_id, kind, idempotency_key, body, facts, tone, image_mode, status, format)
+           VALUES ($1, 'CONTEXT', $2, $3, $4::jsonb, 'normal', $5, 'queued', 'texto')
+           ON CONFLICT (idempotency_key) DO NOTHING`,
+          [
+            candidate.story_id,
+            `context-post:${candidate.story_key}`,
+            line,
+            JSON.stringify({ imageUrl: image }),
+            image ? (route === "buscar" ? "fotografia_real" : "bot_generada") : "texto",
+          ],
+        );
+      }
     }
     await client.query(`UPDATE jobs SET status = 'done', last_error = NULL, updated_at = now() WHERE idempotency_key = $1`, [jobKey]);
     return { status: "ready", checked: 1, decision: review.decision };

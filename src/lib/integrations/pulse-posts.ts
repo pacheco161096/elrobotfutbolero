@@ -1,9 +1,13 @@
 import pg from "pg";
 import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import { mentionsMatch } from "@/lib/engines/context";
+import { pickExpression } from "@/lib/engines/copy";
+import { memeScene } from "@/lib/engines/image-route";
 import { contradictsScore, halftimeText, pulseLine, quietSlot, readPulse } from "@/lib/engines/match-pulse";
 import { brightDataMissing, facebookPageUrls, pollSocialSearch, triggerSocialSearch } from "@/lib/integrations/bright-data";
 import { fetchMatchSides } from "@/lib/integrations/fixture-stats";
+import { reinterpretPage } from "@/lib/integrations/openai-voice";
+import { generateRobotImage } from "@/lib/integrations/robot-image";
 
 const RELEVANT = ["GOAL", "RED_CARD", "PENALTY", "MISSED_PENALTY", "VAR"];
 
@@ -44,7 +48,7 @@ async function insertPost(
       input.key,
       input.body,
       JSON.stringify({ imageUrl: input.imageUrl ?? null }),
-      input.imageUrl ? "fotografia_real" : "texto",
+      input.imageUrl ? "bot_generada" : "texto",
     ],
   );
   return inserted.rowCount ?? 0;
@@ -105,7 +109,7 @@ async function pageQuote(
   client: pg.Client,
   match: LiveMatch,
   env: Record<string, string | undefined>,
-): Promise<{ status: "quote"; text: string; imageUrl: string | null } | { status: "waiting" } | { status: "none" }> {
+): Promise<{ status: "quote"; source: string; author: string } | { status: "waiting" } | { status: "none" }> {
   if (match.home_score == null || match.away_score == null) return { status: "none" };
   if (brightDataMissing(env).length) return { status: "none" };
   const jobKey = `pulse-pages:${match.fixture_id}`;
@@ -140,11 +144,10 @@ async function pageQuote(
     return mentionsMatch(item.text, teams) && !contradictsScore(item.text, match.home_score as number, match.away_score as number);
   });
   if (!hit) return { status: "none" };
-  const author = hit.author?.trim() || "publicación pública";
   return {
     status: "quote",
-    text: `${author}: ${hit.text}`.replace(/\s+/g, " ").trim().slice(0, 220),
-    imageUrl: hit.imageUrl ?? null,
+    source: hit.text,
+    author: hit.author?.trim() || "publicación pública",
   };
 }
 
@@ -179,13 +182,23 @@ export async function runQuietPosts(env: Record<string, string | undefined> = pr
       if (slot === 2) {
         const quote = await pageQuote(client, match, env);
         if (quote.status === "quote") {
-          created += await insertPost(client, {
-            kind: "PULSE",
-            key: `pulse:${match.fixture_id}:2`,
-            body: quote.text,
-            imageUrl: quote.imageUrl,
-          });
-          continue;
+          const line = await reinterpretPage({
+            source: quote.source,
+            author: quote.author,
+            situation: `Partido en curso entre ${match.home_team} y ${match.away_team}, minuto ${match.minute ?? "sin confirmar"}. No hay un evento nuevo. Si el texto ajeno no aporta un ángulo, responde NADA.`,
+          }, env);
+          if (line) {
+            const image = overrides.pauseImages
+              ? null
+              : await generateRobotImage(pickExpression({ eventType: "PULSE", tone: "normal" }), env, fetch, memeScene(line));
+            created += await insertPost(client, {
+              kind: "PULSE",
+              key: `pulse:${match.fixture_id}:2`,
+              body: line,
+              imageUrl: image,
+            });
+            continue;
+          }
         }
         if (quote.status === "waiting" && (match.minute ?? 0) < 80) continue;
       }

@@ -6,6 +6,7 @@ export async function generateRobotImage(
   expression: string,
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
+  scene = "watching a football match on a dark screen",
 ): Promise<string | null> {
   if (!env.OPENAI_API_KEY) return null;
   const response = await fetchImpl("https://api.openai.com/v1/images/generations", {
@@ -18,7 +19,7 @@ export async function generateRobotImage(
       model: MODEL,
       size: "1024x1024",
       response_format: "url",
-      prompt: `Simple modern robot, square head, expressive, internet-native, not childish, not a humanoid, no football jersey, no club crest, no brand logos. Expression: ${expression}. Dark plain background.`,
+      prompt: `Simple modern robot, square head, LED eyes, green, internet-native, not childish, not a humanoid, no football jersey, no club crest, no brand logos, no real players, no copied photograph, no text. Expression: ${expression}. Scene: ${scene}. Dark background.`,
     }),
   });
   if (!response.ok) return null;
