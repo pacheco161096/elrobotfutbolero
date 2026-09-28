@@ -2,6 +2,8 @@ import { statusFromApi, type MatchStatus } from "@/lib/engines/match-state";
 
 export const API_FOOTBALL_HOST = "v3.football.api-sports.io";
 export const LIGA_MX_LEAGUE_ID = 262;
+export const UEFA_NATIONS_LEAGUE_ID = 5;
+export const COVERED_LEAGUE_IDS = [LIGA_MX_LEAGUE_ID, UEFA_NATIONS_LEAGUE_ID] as const;
 
 export type StoredMatch = {
   fixtureId: string;
@@ -67,10 +69,14 @@ async function readFixtures(url: string, key: string, fetchImpl: typeof fetch): 
 }
 
 export async function fetchFixtures(
-  input: { from: string; to: string; season: number; key: string; host?: string },
+  input: { from: string; to: string; season: number; key: string; host?: string; leagueId?: number },
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ matches: StoredMatch[]; error: string | null }> {
   return readFixtures(fixturesUrl(input, input.host), input.key, fetchImpl);
+}
+
+export function coveredLiveFixturesUrl(host = API_FOOTBALL_HOST): string {
+  return `https://${host}/fixtures?live=all`;
 }
 
 export function liveFixturesUrl(
@@ -148,16 +154,16 @@ export async function fetchStandings(
 }
 
 export async function fetchLiveFixtures(
-  input: { key: string; host?: string; leagueId?: number; season?: number },
+  input: { key: string; host?: string; leagueIds?: readonly number[] },
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ matches: StoredMatch[]; error: string | null }> {
-  const leagueId = input.leagueId ?? LIGA_MX_LEAGUE_ID;
-  const result = await readFixtures(liveFixturesUrl(leagueId, input.host, input.season), input.key, fetchImpl);
+  const allowed = new Set(input.leagueIds ?? COVERED_LEAGUE_IDS);
+  const result = await readFixtures(coveredLiveFixturesUrl(input.host), input.key, fetchImpl);
   return {
     ...result,
     matches: result.matches.filter((match) => {
       const id = (match.raw as FixturePayload).league?.id;
-      return id == null || id === leagueId;
+      return id != null && allowed.has(id);
     }),
   };
 }

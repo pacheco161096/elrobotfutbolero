@@ -23,7 +23,7 @@ export function presentMatch(match: ListedMatch): { center: string; detail: stri
   const scored = match.homeScore != null && match.awayScore != null;
   if (scored) {
     const minute = match.status === "LIVE" && match.minute != null ? ` · ${match.minute}'` : "";
-    return { center: `${match.homeScore}-${match.awayScore}`, detail: `${statusLabel(match.status)}${minute}`, scored: true };
+    return { center: `${match.homeScore}-${match.awayScore}`, detail: [match.league, `${statusLabel(match.status)}${minute}`].filter(Boolean).join(" · "), scored: true };
   }
   const when = match.kickoffAt
     ? new Intl.DateTimeFormat("es-MX", {
@@ -35,5 +35,5 @@ export function presentMatch(match: ListedMatch): { center: string; detail: stri
         timeZone: "America/Mexico_City",
       }).format(new Date(match.kickoffAt))
     : "Horario por confirmar";
-  return { center: when, detail: statusLabel(match.status), scored: false };
+  return { center: when, detail: [match.league, statusLabel(match.status)].filter(Boolean).join(" · "), scored: false };
 }

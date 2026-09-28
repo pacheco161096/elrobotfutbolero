@@ -7,7 +7,7 @@ import { expressionFile, pickExpression } from "@/lib/engines/copy";
 import { runPipeline } from "@/lib/engines/pipeline";
 import { storyKeyFor } from "@/lib/engines/story";
 import { classifyTruth } from "@/lib/engines/truth";
-import { fetchFixtures, fetchLiveFixtures, liveFixturesUrl, mapFixture, mapLiveEvent } from "@/lib/integrations/api-football";
+import { coveredLiveFixturesUrl, fetchFixtures, fetchLiveFixtures, liveFixturesUrl, mapFixture, mapLiveEvent } from "@/lib/integrations/api-football";
 import { presentMatch } from "@/lib/matches/present";
 import { FACEBOOK_BLACK_TEXT_PRESET, publishWithZernio, zernioPostBody } from "@/lib/integrations/gates";
 import { liveWorkerTick } from "@/lib/worker/tick";
@@ -221,6 +221,7 @@ describe("api football", () => {
       kickoffAt: "2026-09-26T01:00:00.000Z",
       minute: null,
       round: "Apertura - 10",
+      league: null,
     });
     expect(view.scored).toBe(false);
     expect(view.center).not.toMatch(/\d+-\d+/);
@@ -277,6 +278,7 @@ describe("api football", () => {
     expect(liveFixturesUrl(262, "v3.football.api-sports.io", 2026)).toBe(
       "https://v3.football.api-sports.io/fixtures?league=262&season=2026&live=all",
     );
+    expect(coveredLiveFixturesUrl()).toBe("https://v3.football.api-sports.io/fixtures?live=all");
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       response: [
         {
@@ -291,14 +293,19 @@ describe("api football", () => {
           teams: { home: { name: "León" }, away: { name: "Juárez" } },
           goals: { home: 0, away: 0 },
         },
+        {
+          fixture: { id: 3, status: { short: "1H" } },
+          league: { id: 5, name: "UEFA Nations League" },
+          teams: { home: { name: "Belgium" }, away: { name: "France" } },
+          goals: { home: 0, away: 0 },
+        },
       ],
     })));
-    const live = await fetchLiveFixtures({ key: "llave", season: 2026 }, fetchImpl);
+    const live = await fetchLiveFixtures({ key: "llave" }, fetchImpl);
     const call = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-    expect(String(call[0])).toContain("live=all");
-    expect(String(call[0])).not.toContain("live=262");
+    expect(String(call[0])).toBe("https://v3.football.api-sports.io/fixtures?live=all");
     expect(live.error).toBeNull();
-    expect(live.matches.map((match) => match.fixtureId)).toEqual(["2"]);
+    expect(live.matches.map((match) => match.fixtureId)).toEqual(["2", "3"]);
   });
 });
 

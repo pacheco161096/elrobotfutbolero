@@ -5,7 +5,7 @@ import { listMatches } from "@/lib/db/matches";
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const matches = await listMatches();
+  const matches = await listMatches(undefined, "Liga MX");
   return (
     <Periodico>
       <article className="section-page fixtures-page">

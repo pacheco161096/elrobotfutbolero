@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Page() {
   const matches = await listMatches();
-  const round = matches.find((match) => match.round)?.round ?? "Liga MX";
+  const round = "Liga MX y UEFA Nations League";
   return (
     <Periodico>
       <article className="section-page fixtures-page">

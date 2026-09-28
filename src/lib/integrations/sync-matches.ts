@@ -1,5 +1,5 @@
 import pg from "pg";
-import { fetchFixtures, fetchStandings, type StandingRow, type StoredMatch } from "@/lib/integrations/api-football";
+import { COVERED_LEAGUE_IDS, fetchFixtures, fetchStandings, type StandingRow, type StoredMatch } from "@/lib/integrations/api-football";
 import { syncWindow } from "@/lib/engines/match-state";
 
 const UPSERT = `
@@ -51,10 +51,16 @@ export async function syncLigaMx(env: Record<string, string | undefined> = proce
   const window = syncWindow(now);
   if (!key || !databaseUrl) return { saved: 0, error: "Faltan API_FOOTBALL_KEY o DATABASE_URL.", window };
   const season = now.getUTCFullYear();
-  const fetched = await fetchFixtures({ ...window, season, key, host: env.API_FOOTBALL_HOST });
-  if (fetched.error) return { saved: 0, error: fetched.error, window };
-  const saved = await saveMatches(databaseUrl, fetched.matches);
-  return { saved, error: null, window };
+  const matches: StoredMatch[] = [];
+  const errors: string[] = [];
+  for (const leagueId of COVERED_LEAGUE_IDS) {
+    const fetched = await fetchFixtures({ ...window, season, key, host: env.API_FOOTBALL_HOST, leagueId });
+    if (fetched.error) errors.push(fetched.error);
+    else matches.push(...fetched.matches);
+  }
+  if (!matches.length && errors.length) return { saved: 0, error: errors.join(" "), window };
+  const saved = await saveMatches(databaseUrl, matches);
+  return { saved, error: errors[0] ?? null, window };
 }
 
 export async function saveStandings(databaseUrl: string, rows: StandingRow[]): Promise<number> {
