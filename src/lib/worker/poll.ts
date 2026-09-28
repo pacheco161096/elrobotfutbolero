@@ -2,6 +2,7 @@ import pg from "pg";
 import { pollingIntervalMs, type MatchStatus } from "@/lib/engines/match-state";
 import { fetchLiveFixtures } from "@/lib/integrations/api-football";
 import { ingestPlayedEvents } from "@/lib/integrations/ingest-events";
+import { runHalftimePosts } from "@/lib/integrations/pulse-posts";
 import { publishReadyPosts, runKickoffPosts } from "@/lib/integrations/publish";
 import { saveMatches } from "@/lib/integrations/sync-matches";
 
@@ -66,6 +67,7 @@ export async function pollLive(
       stored = events.stored;
       try {
         await runKickoffPosts(env);
+        await runHalftimePosts(env);
         await publishReadyPosts(env);
       } catch {
         error = error ?? "No pude publicar lo que ya estaba listo.";

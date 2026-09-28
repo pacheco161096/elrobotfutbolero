@@ -57,7 +57,7 @@ export async function publishReadyPosts(
        WHERE p.facebook_post_id IS NULL
          AND p.body IS NOT NULL
          AND p.status IN ('queued', 'pending_credentials')
-         AND (p.kind IN ('PREVIA', 'KICKOFF') OR m.status = ANY($1::text[]))
+         AND (p.kind IN ('PREVIA', 'KICKOFF', 'HALFTIME', 'PULSE') OR m.status = ANY($1::text[]))
          AND (SELECT count(*) FROM post_attempts a WHERE a.post_id = p.id AND a.status = 'error') < 2
        ORDER BY p.created_at
        LIMIT 5`,

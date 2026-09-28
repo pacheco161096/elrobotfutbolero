@@ -2,6 +2,7 @@ import pg from "pg";
 import { assessSchedule, inconsistentFindings, type ScheduledFixture } from "@/lib/cron/assess";
 import { watchdogFindings, type MatchStatus, type WatchdogFinding } from "@/lib/engines/match-state";
 import { ingestPlayedEvents } from "@/lib/integrations/ingest-events";
+import { runHalftimePosts, runQuietPosts } from "@/lib/integrations/pulse-posts";
 import { publishReadyPosts, runKickoffPosts, runPreMatchPosts } from "@/lib/integrations/publish";
 import { runSocialContext } from "@/lib/integrations/social-context";
 import { refreshOverrides } from "@/lib/control/overrides";
@@ -96,6 +97,8 @@ export async function runFootballEngine(env: Env = process.env, now = new Date()
   }
   const previa = await runPreMatchPosts(env, now);
   const kickoff = await runKickoffPosts(env);
+  const halftime = await runHalftimePosts(env);
+  const quiet = await runQuietPosts(env);
   const published = await publishReadyPosts(env);
   await writeLog(databaseUrl, context.status === "error" ? "error" : "info", "football-engine", "Revisé los partidos que ya deberían haber empezado.", {
     saved: synced.saved,
@@ -104,6 +107,8 @@ export async function runFootballEngine(env: Env = process.env, now = new Date()
     context: context.status,
     previa,
     kickoff,
+    halftime,
+    quiet,
     published,
   });
   return { preMatch: 0, refreshed: true, saved: synced.saved, checked: events.checked, stored: events.stored, context, previa, published, error: null };

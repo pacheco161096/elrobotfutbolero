@@ -1,5 +1,5 @@
 export function imageForPost(kind: string, imageUrl: string | null | undefined, pauseImages: boolean): string | null {
-  if (pauseImages || kind === "FLASH" || kind === "PREVIA" || kind === "KICKOFF") return null;
+  if (pauseImages || kind === "FLASH" || kind === "PREVIA" || kind === "KICKOFF" || kind === "HALFTIME") return null;
   if (!imageUrl?.startsWith("https://")) return null;
   return imageUrl;
 }
