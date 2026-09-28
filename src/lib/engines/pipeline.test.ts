@@ -351,6 +351,14 @@ describe("integraciones pendientes", () => {
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://zernio.com/api/v1/posts");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer llave");
+    const accented = vi.fn(async () => new Response(JSON.stringify({ post: { _id: "z2" } }), { status: 200 }));
+    await publishWithZernio({ idempotencyKey: "api:fx:1528908:GOAL:40:Haris Tabaković:Bosnia", text: "Gol." }, {
+      ZERNIO_API_KEY: "llave",
+      ZERNIO_ACCOUNT_ID: "acc_demo",
+    }, accented);
+    const accentedHeaders = (accented.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>;
+    expect(accentedHeaders["Idempotency-Key"]).toBe(encodeURIComponent("api:fx:1528908:GOAL:40:Haris Tabaković:Bosnia"));
+    expect([...accentedHeaders["Idempotency-Key"]].every((char) => char.charCodeAt(0) <= 255)).toBe(true);
     expect(JSON.parse(init.body as string)).toEqual(flash);
   });
 

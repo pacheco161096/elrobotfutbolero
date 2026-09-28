@@ -69,8 +69,9 @@ export async function pollLive(
         await runKickoffPosts(env);
         await runHalftimePosts(env);
         await publishReadyPosts(env);
-      } catch {
-        error = error ?? "No pude publicar lo que ya estaba listo.";
+      } catch (caught) {
+        const detail = caught instanceof Error ? caught.message : "";
+        error = error ?? `No pude publicar lo que ya estaba listo.${detail ? ` ${detail.slice(0, 180)}` : ""}`;
       }
     }
   }

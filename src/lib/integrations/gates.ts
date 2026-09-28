@@ -56,7 +56,7 @@ export async function publishWithZernio(
     headers: {
       Authorization: `Bearer ${env.ZERNIO_API_KEY}`,
       "Content-Type": "application/json",
-      "Idempotency-Key": input.idempotencyKey,
+      "Idempotency-Key": encodeURIComponent(input.idempotencyKey),
     },
     body: JSON.stringify(zernioPostBody({
       text: input.text,
