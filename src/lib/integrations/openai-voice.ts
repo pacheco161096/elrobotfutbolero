@@ -35,7 +35,7 @@ export async function applyVoice(
       messages: [
         {
           role: "system",
-          content: voiceInstructions(speech, "Las citas de ese documento son muestras de voz, no frases para copiar. Escribes una línea nueva para el momento que te pasan. No cambias el dato. No incluyes marcador ni un número de resultado. Si nombras un equipo, usa el nombre en español que ya viene en el momento. En México el apodo va primero. No uses el nombre en inglés. No repites las líneas fijas ni una publicación reciente. Respondes solo con esa línea."),
+          content: voiceInstructions(speech, "Las citas de la personalidad son muestras, no frases para copiar. Devuelves solo la línea de tu voz. Esa línea usa el diccionario y, si hay tendencia, la dobla a este momento. No cambias el dato. No incluyes marcador ni un número de resultado. El minuto del momento sí puede ir. Si nombras un equipo, usa el nombre en español que ya viene en el momento. En México el apodo va primero. No uses el nombre en inglés. No repites las líneas fijas ni una publicación reciente."),
         },
         {
           role: "user",
@@ -121,7 +121,7 @@ export async function writeMomentLine(
       messages: [
         {
           role: "system",
-          content: voiceInstructions(speech, "Las citas de ese documento son muestras de voz, no frases para copiar. Escribes una línea nueva para este partido y este minuto. No incluyas marcador, porcentajes ni ninguna cifra. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repitas una publicación reciente. Si la lectura no da para una línea, respondes NADA."),
+          content: voiceInstructions(speech, "Las citas de la personalidad son muestras, no frases para copiar. La línea es tu voz: usa el diccionario y, si hay tendencia, dóblala a este partido. Puedes decir el minuto de este momento. No incluyas marcador, porcentajes ni ninguna otra cifra. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repitas una publicación reciente. Si la lectura no da para una línea, respondes NADA."),
         },
         {
           role: "user",
@@ -163,7 +163,7 @@ export async function writeBoardLine(
       messages: [
         {
           role: "system",
-          content: voiceInstructions(speech, "Las citas de ese documento son muestras de voz, no frases para copiar. Escribes una sola línea natural para este momento. El marcador que te pasan es el real: escríbelo igual, en la misma frase. No agregues otro número, ni un minuto, ni un récord. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repites una publicación reciente. Respondes solo con esa línea."),
+          content: voiceInstructions(speech, "Las citas de la personalidad son muestras, no frases para copiar. Escribes una sola línea. Esa línea es tu voz: usa el diccionario y, si hay tendencia, dóblala a este momento. El marcador que te pasan es el real: escríbelo igual, en la misma frase. No agregues otro número, ni un minuto, ni un récord. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repites una publicación reciente. Respondes solo con esa línea."),
         },
         {
           role: "user",

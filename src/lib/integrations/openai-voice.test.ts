@@ -119,13 +119,15 @@ describe("voz", () => {
     expect(ownGoal.lockedLines[0]).toBe("Autogol de Francisco Nevarez.");
   });
 
-  it("el habla afina la voz y no obliga a usar la tendencia", () => {
+  it("la voz usa el diccionario y la tendencia en su línea", () => {
     const withEar = voiceInstructions("Cómo se habla:\n- Cierran la queja con un neta.", "No cambias el dato.");
     const without = voiceInstructions("", "No cambias el dato.");
     expect(withEar).toContain("BOT DE FÚTBOL MEXICANO");
     expect(withEar).toContain("REGLA DE ORO");
     expect(withEar).not.toContain("SISTEMA OPERATIVO DE DECISIÓN");
-    expect(withEar).toContain("obligatorio tomarlo en cuenta al interpretar");
+    expect(withEar).toContain("La línea de tu voz sale de aquí");
+    expect(withEar).toContain("esa línea de voz la usa");
+    expect(interpretInstructions("Cómo se habla:\n- Cierran la queja con un neta.", "Interpretas.")).toContain("obligatorio tomarlo en cuenta al interpretar");
     expect(withEar).toContain("Cierran la queja con un neta.");
     expect(withEar).toContain("Ortografía correcta");
     expect(withEar.indexOf("No cambias el dato.")).toBeGreaterThan(withEar.indexOf("Cierran la queja"));

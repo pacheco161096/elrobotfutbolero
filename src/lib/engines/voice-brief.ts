@@ -37,12 +37,12 @@ export function personalityVoice(): string {
     .join("\n\n");
 }
 
-function brief(source: string, speech: string, task: string): string {
+function brief(source: string, speech: string, dictionaryLead: string, task: string): string {
   const dictionary = censorSwears(speech.trim()) || "(Todavía no hay frases ni tendencias. No inventes un modismo ni una falta de ortografía.)";
   return [
     "Eres El Robot Futbolero. Esta es tu única personalidad:",
     source,
-    "Diccionario de frases y tendencias. Es obligatorio tomarlo en cuenta al interpretar y al escribir. Sirve para sonar natural. No copies estas líneas. Una tendencia entra solo si cae sola en este momento; si hay que forzarla, no existe:",
+    dictionaryLead,
     dictionary,
     "Ortografía correcta del español. La única palabra que puede cambiarse es una grosería, y solo para censurarla con un asterisco en la primera vocal, nunca completa: m*erda, p*ndejo, c*brón, m*mes, v*lieron m*dre.",
     task,
@@ -50,9 +50,19 @@ function brief(source: string, speech: string, task: string): string {
 }
 
 export function voiceInstructions(speech: string, task: string): string {
-  return brief(personalityVoice(), speech, task);
+  return brief(
+    personalityVoice(),
+    speech,
+    "Diccionario de frases y tendencias. La línea de tu voz sale de aquí: tomas el giro o la muletilla y la pones en este momento. No pegues la frase completa si habla de otra cosa. Si hay una tendencia, esa línea de voz la usa, doblada a este momento:",
+    task,
+  );
 }
 
 export function interpretInstructions(speech: string, task: string): string {
-  return brief(personality(), speech, task);
+  return brief(
+    personality(),
+    speech,
+    "Diccionario de frases y tendencias. Es obligatorio tomarlo en cuenta al interpretar. Sirve para entender cómo se está hablando. No copies estas líneas. Una tendencia se anota solo si cae sola; si hay que forzarla, no existe:",
+    task,
+  );
 }

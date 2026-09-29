@@ -53,8 +53,8 @@ export function pulseSituation(input: {
     ? "Ninguno de los dos está llegando con claridad al arco."
     : "Un equipo tiene la pelota y no genera peligro.";
   const place = input.place === "medio"
-    ? "Es el medio tiempo. El marcador ya va en otra línea. Esta línea es el remate, sin cifras."
-    : "Es un comentario del partido callado. Sin marcador y sin cifras.";
+    ? "Es el medio tiempo. El marcador ya va en otra línea. Esta línea es el remate. Puedes decir el minuto. No pongas el marcador ni otra cifra."
+    : "Es un comentario del partido callado. Puedes decir el minuto de este momento. Sin marcador y sin otra cifra.";
   return `${input.home} contra ${input.away}. ${when}. El marcador real es ${input.homeScore}-${input.awayScore}; no lo escribas. ${reading} ${place}`;
 }
 
@@ -69,9 +69,16 @@ export function openMomentSituation(input: {
   return `${input.home} contra ${input.away}. Medio tiempo, ${when}. El marcador real es ${input.homeScore}-${input.awayScore}; no lo escribas. Las estadísticas no alcanzan para decir que nadie llega ni que un equipo tiene el balón sin peligro. No inventes esa lectura. Una línea del momento, o NADA.`;
 }
 
+function minuteOnly(line: string, minute: number | null): boolean {
+  if (/\d+\s*[-–]\s*\d+/.test(line) || line.includes("%")) return false;
+  const digits = line.match(/\d+/g) ?? [];
+  if (digits.length === 0) return true;
+  return minute != null && digits.every((digit) => Number(digit) === minute);
+}
+
 export function acceptMomentLine(raw: string, avoid: string[], minute: number | null): string | null {
   const line = censorSwears(raw).trim().replace(/^["“]|["”]$/g, "");
-  if (!line || /^nada\.?$/i.test(line) || line.includes("\n") || line.length > 220 || /\d/.test(line)) return null;
+  if (!line || /^nada\.?$/i.test(line) || line.includes("\n") || line.length > 220 || !minuteOnly(line, minute)) return null;
   if (minute != null && minute >= 46 && /calentando|apenas estaba|ni se sentaban|minuto cero/i.test(line)) return null;
   const spoken = line.toLowerCase();
   if (avoid.some((item) => {

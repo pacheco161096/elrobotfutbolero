@@ -22,7 +22,7 @@ describe("lectura del partido", () => {
     expect(readPulse({ shotsOnTarget: 4, possession: 55 }, { shotsOnTarget: 3, possession: 45 })).toBeNull();
   });
 
-  it("la frase del partido callado la tiene que escribir la voz, sin cifra y sin repetir", () => {
+  it("la frase del partido callado puede decir el minuto y no el marcador", () => {
     const situation = pulseSituation({
       home: "Belgium",
       away: "France",
@@ -38,6 +38,10 @@ describe("lectura del partido", () => {
       "Se están mirando y el arco descansa. 🤖",
     );
     expect(acceptMomentLine("Nadie llega. Yo aquí gastando servidores. 🤖", ["Nadie llega. Yo aquí gastando servidores. 🤖"], 30)).toBeNull();
+    expect(acceptMomentLine("Minuto 70. Partido más aburrido que una serie de TV sin trama.", [], 70)).toBe(
+      "Minuto 70. Partido más aburrido que una serie de TV sin trama.",
+    );
+    expect(acceptMomentLine("Minuto 12. Esto no es el momento.", [], 70)).toBeNull();
     expect(acceptMomentLine("Van 0-0 y yo aquí.", [], 30)).toBeNull();
     expect(acceptMomentLine("Apenas estaba calentando servidores. 🤖", [], 70)).toBeNull();
   });
