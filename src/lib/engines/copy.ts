@@ -1,3 +1,5 @@
+import { censorSwears } from "@/lib/engines/censor";
+
 export type Draft = {
   locked: string[];
   personality: string | null;
@@ -185,13 +187,26 @@ export function pickExpression(input: { eventType: string; tone: "normal" | "inf
   return "informacion";
 }
 
+function repeatsLocked(line: string, locked: string[]): boolean {
+  const spoken = line.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+  return locked.some((item) => {
+    if (line.includes(item)) return true;
+    const words = item.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").replace(/[^\p{L}\p{N}\s]/gu, " ").split(" ").filter((word) => word.length >= 2);
+    for (let index = 0; index <= words.length - 4; index += 1) {
+      const window = words.slice(index, index + 4).join(" ");
+      if (window.length >= 12 && spoken.includes(window)) return true;
+    }
+    return false;
+  });
+}
+
 export function acceptVoiceLine(draft: Draft, raw: string): Draft {
-  const parts = raw.trim().replace(/^["“]|["”]$/g, "").split("\n").map((line) => line.trim()).filter(Boolean);
+  const parts = censorSwears(raw).trim().replace(/^["“]|["”]$/g, "").split("\n").map((line) => line.trim()).filter(Boolean);
   const line = parts.length === 1 ? parts[0] : "";
   const avoid = (draft.avoid ?? []).map((item) => item.toLowerCase());
   const copied = Boolean(line) && avoid.some((item) => item.includes(line.toLowerCase()));
   const offMoment = Boolean(line) && !voiceFits(line, draft.minute);
-  const rejected = !line || copied || offMoment || parts.length !== 1 || SCORE.test(line) || line.length > 240 || draft.locked.some((locked) => line.includes(locked));
+  const rejected = !line || copied || offMoment || parts.length !== 1 || SCORE.test(line) || line.length > 240 || repeatsLocked(line, draft.locked);
   if (rejected) return { ...draft, personality: null, text: draft.locked.join("\n"), voice: "plantilla" };
   return { ...draft, personality: line, text: [...draft.locked, line].join("\n"), voice: "openai" };
 }

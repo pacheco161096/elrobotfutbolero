@@ -1,3 +1,5 @@
+import { censorSwears } from "@/lib/engines/censor";
+
 export type SideStats = {
   shotsOnTarget: number;
   possession: number;
@@ -68,7 +70,7 @@ export function openMomentSituation(input: {
 }
 
 export function acceptMomentLine(raw: string, avoid: string[], minute: number | null): string | null {
-  const line = raw.trim().replace(/^["“]|["”]$/g, "");
+  const line = censorSwears(raw).trim().replace(/^["“]|["”]$/g, "");
   if (!line || /^nada\.?$/i.test(line) || line.includes("\n") || line.length > 220 || /\d/.test(line)) return null;
   if (minute != null && minute >= 46 && /calentando|apenas estaba|ni se sentaban|minuto cero/i.test(line)) return null;
   const spoken = line.toLowerCase();

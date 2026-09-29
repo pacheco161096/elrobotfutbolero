@@ -52,7 +52,7 @@ export function pendingItems(env: Env = process.env): PendingItem[] {
       name: "OpenAI",
       kind: "credential",
       ready: credentials.openai,
-      detail: "OPENAI_API_KEY. La voz sale de docs/personalidad.md. No cambia el dato.",
+      detail: "OPENAI_API_KEY. La voz sale de docs/personalidad.md y del habla fresca. No cambia el dato.",
     },
     {
       id: "zernio",
@@ -66,14 +66,14 @@ export function pendingItems(env: Env = process.env): PendingItem[] {
       name: "Bright Data",
       kind: "credential",
       ready: credentials.brightData,
-      detail: "BRIGHT_DATA_API_KEY, BRIGHT_DATA_DATASET_ID y BRIGHT_DATA_PAGE_URLS. Varias fanpages en una sola llamada, máximo 20. Solo contexto social. El Flash no lo espera.",
+      detail: "BRIGHT_DATA_API_KEY, BRIGHT_DATA_DATASET_ID y BRIGHT_DATA_PAGE_URLS. El habla usa SPEECH_PAGE_URLS, otra lista, máximo 20. El Flash no lo espera.",
     },
     {
       id: "cron",
       name: "Secreto de cron",
       kind: "credential",
       ready: credentials.cron,
-      detail: "CRON_SECRET. cron-job.org lo envía como Bearer al disparar las tres rutas. El sondeo de 15 segundos no va ahí.",
+      detail: "CRON_SECRET. cron-job.org lo envía como Bearer. /api/cron/habla va cuatro veces al día. El sondeo de 15 segundos no va ahí.",
     },
     {
       id: "vercel",

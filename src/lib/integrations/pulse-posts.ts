@@ -1,14 +1,13 @@
 import pg from "pg";
 import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import { mentionsMatch } from "@/lib/engines/context";
-import { pickExpression } from "@/lib/engines/copy";
-import { memeScene } from "@/lib/engines/image-route";
-import { contradictsScore, halftimeText, openMomentSituation, pulseSituation, quietSlot, readPulse } from "@/lib/engines/match-pulse";
+import { contradictsScore, openMomentSituation, pulseSituation, quietSlot, readPulse } from "@/lib/engines/match-pulse";
+import { boardNames, boardSituation } from "@/lib/engines/scoreboard";
 import { teamSpoken } from "@/lib/engines/team-names";
 import { brightDataMissing, facebookPageUrls, pollSocialSearch, triggerSocialSearch } from "@/lib/integrations/bright-data";
 import { fetchMatchSides } from "@/lib/integrations/fixture-stats";
-import { reinterpretPage, writeMomentLine } from "@/lib/integrations/openai-voice";
-import { generateRobotImage } from "@/lib/integrations/robot-image";
+import { reinterpretPage, writeBoardLine, writeMomentLine } from "@/lib/integrations/openai-voice";
+import { searchMatchImage } from "@/lib/integrations/web-image";
 
 const RELEVANT = ["GOAL", "RED_CARD", "PENALTY", "MISSED_PENALTY", "VAR"];
 
@@ -31,7 +30,7 @@ async function openClient(databaseUrl: string): Promise<pg.Client> {
 async function recentLines(client: pg.Client): Promise<string[]> {
   const result = await client.query<{ body: string }>(
     `SELECT body FROM posts
-     WHERE body IS NOT NULL AND kind IN ('PULSE', 'HALFTIME', 'KICKOFF', 'FLASH')
+     WHERE body IS NOT NULL AND kind IN ('PULSE', 'HALFTIME', 'FULL_TIME', 'KICKOFF', 'FLASH')
      ORDER BY created_at DESC
      LIMIT 12`,
   );
@@ -48,7 +47,7 @@ async function hasRelevantEvent(client: pg.Client, fixtureId: string): Promise<b
 
 async function insertPost(
   client: pg.Client,
-  input: { kind: string; key: string; body: string; imageUrl?: string | null },
+  input: { kind: string; key: string; body: string; imageUrl?: string | null; imageMode?: string },
 ): Promise<number> {
   const inserted = await client.query(
     `INSERT INTO posts (kind, idempotency_key, body, facts, tone, image_mode, status, format)
@@ -59,16 +58,18 @@ async function insertPost(
       input.key,
       input.body,
       JSON.stringify({ imageUrl: input.imageUrl ?? null }),
-      input.imageUrl ? "bot_generada" : "texto",
+      input.imageUrl ? (input.imageMode ?? "bot_generada") : "texto",
     ],
   );
   return inserted.rowCount ?? 0;
 }
 
-export async function runHalftimePosts(env: Record<string, string | undefined> = process.env): Promise<number> {
+async function runBoardPosts(
+  phase: "medio" | "final",
+  env: Record<string, string | undefined>,
+): Promise<number> {
   const databaseUrl = env.DATABASE_URL;
-  const key = env.API_FOOTBALL_KEY;
-  if (!databaseUrl || !key) return 0;
+  if (!databaseUrl) return 0;
   await refreshOverrides(databaseUrl);
   const overrides = getOverrides();
   if (overrides.pauseAll || overrides.pausePublishing) return 0;
@@ -76,64 +77,78 @@ export async function runHalftimePosts(env: Record<string, string | undefined> =
   let created = 0;
   try {
     const matches = await client.query<LiveMatch>(
-      `SELECT fixture_id, home_team, away_team, home_score, away_score, status, minute
-       FROM matches
-       WHERE status = 'HALFTIME'
-         AND home_score IS NOT NULL
-         AND away_score IS NOT NULL
-         AND NOT EXISTS (SELECT 1 FROM posts p WHERE p.idempotency_key = 'halftime:' || matches.fixture_id)`,
+      phase === "medio"
+        ? `SELECT fixture_id, home_team, away_team, home_score, away_score, status, minute
+           FROM matches
+           WHERE status = 'HALFTIME'
+             AND home_score IS NOT NULL
+             AND away_score IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM posts p WHERE p.idempotency_key = 'halftime:' || matches.fixture_id)`
+        : `SELECT fixture_id, home_team, away_team, home_score, away_score, status, minute
+           FROM matches
+           WHERE status = 'FT'
+             AND home_score IS NOT NULL
+             AND away_score IS NOT NULL
+             AND kickoff_at > now() - interval '4 hours'
+             AND NOT EXISTS (SELECT 1 FROM posts p WHERE p.idempotency_key = 'fulltime:' || matches.fixture_id)`,
     );
     for (const match of matches.rows) {
-      const sides = await fetchMatchSides({
-        fixtureId: match.fixture_id,
-        home: match.home_team,
-        away: match.away_team,
-        key,
-        host: env.API_FOOTBALL_HOST,
-      });
-      if (!sides) continue;
-      const kind = readPulse(sides.home, sides.away);
-      const home = teamSpoken(match.home_team, `${match.fixture_id}:medio:home`);
-      const away = teamSpoken(match.away_team, `${match.fixture_id}:medio:away`);
-      const voice = await writeMomentLine({
-        situation: kind
-          ? pulseSituation({
-              home,
-              away,
-              minute: match.minute,
-              kind,
-              homeScore: match.home_score as number,
-              awayScore: match.away_score as number,
-              place: "medio",
-            })
-          : openMomentSituation({
-              home,
-              away,
-              minute: match.minute,
-              homeScore: match.home_score as number,
-              awayScore: match.away_score as number,
-            }),
-        avoid: await recentLines(client),
-        minute: match.minute,
-      }, env);
-      if (!voice.spoke) continue;
-      const line = voice.line;
-      created += await insertPost(client, {
-        kind: "HALFTIME",
-        key: `halftime:${match.fixture_id}`,
-        body: halftimeText({
-          home,
-          away,
+      const goals = await client.query<{ minute: number | null }>(
+        `SELECT minute, player, team FROM match_events WHERE fixture_id = $1 AND event_type = 'GOAL'`,
+        [match.fixture_id],
+      );
+      const counted = goals.rows.filter((goal) => phase === "final" || goal.minute == null || goal.minute < 46);
+      const names = boardNames(match.fixture_id, phase, match.home_team, match.away_team);
+      const voice = await writeBoardLine({
+        situation: boardSituation({
+          phase,
+          home: names.home,
+          away: names.away,
           homeScore: match.home_score as number,
           awayScore: match.away_score as number,
-          line,
+          goalCount: counted.length,
         }),
+        avoid: await recentLines(client),
+        homeScore: match.home_score as number,
+        awayScore: match.away_score as number,
+      }, env);
+      if (!voice.spoke || !voice.line) continue;
+      if (phase === "medio") {
+        created += await insertPost(client, {
+          kind: "HALFTIME",
+          key: `halftime:${match.fixture_id}`,
+          body: voice.line,
+        });
+        continue;
+      }
+      if (overrides.pauseImages) continue;
+      const image = await searchMatchImage({
+        query: `${match.home_team} vs ${match.away_team} partido`,
+        teams: [match.home_team, match.away_team],
+        homeScore: match.home_score as number,
+        awayScore: match.away_score as number,
+      });
+      if (!image) continue;
+      created += await insertPost(client, {
+        kind: "FULL_TIME",
+        key: `fulltime:${match.fixture_id}`,
+        body: voice.line,
+        imageUrl: image,
+        imageMode: "fotografia_real",
       });
     }
   } finally {
     await client.end();
   }
   return created;
+}
+
+export async function runHalftimePosts(env: Record<string, string | undefined> = process.env): Promise<number> {
+  return runBoardPosts("medio", env);
+}
+
+export async function runFullTimePosts(env: Record<string, string | undefined> = process.env): Promise<number> {
+  return runBoardPosts("final", env);
 }
 
 async function pageQuote(
@@ -219,14 +234,20 @@ export async function runQuietPosts(env: Record<string, string | undefined> = pr
             situation: `Partido en curso entre ${teamSpoken(match.home_team, `${match.fixture_id}:cita:home`)} y ${teamSpoken(match.away_team, `${match.fixture_id}:cita:away`)}, minuto ${match.minute ?? "sin confirmar"}. No hay un evento nuevo. Nómbralos así, en español. Si el texto ajeno no aporta un ángulo, responde NADA.`,
           }, env);
           if (line) {
-            const image = overrides.pauseImages
-              ? null
-              : await generateRobotImage(pickExpression({ eventType: "PULSE", tone: "normal" }), env, fetch, memeScene(line));
+            if (overrides.pauseImages) continue;
+            const image = await searchMatchImage({
+              query: `${match.home_team} vs ${match.away_team} partido`,
+              teams: [match.home_team, match.away_team],
+              homeScore: match.home_score,
+              awayScore: match.away_score,
+            });
+            if (!image) continue;
             created += await insertPost(client, {
               kind: "PULSE",
               key: `pulse:${match.fixture_id}:2`,
               body: line,
               imageUrl: image,
+              imageMode: "fotografia_real",
             });
             continue;
           }
@@ -256,9 +277,21 @@ export async function runQuietPosts(env: Record<string, string | undefined> = pr
         avoid: await recentLines(client),
         minute: match.minute,
       }, env);
-      if (!voice.spoke || !voice.line) continue;
-      const line = voice.line;
-      created += await insertPost(client, { kind: "PULSE", key: `pulse:${match.fixture_id}:${slot}`, body: line });
+      if (!voice.spoke || !voice.line || overrides.pauseImages) continue;
+      const image = await searchMatchImage({
+        query: `${match.home_team} vs ${match.away_team} partido`,
+        teams: [match.home_team, match.away_team],
+        homeScore: match.home_score,
+        awayScore: match.away_score,
+      });
+      if (!image) continue;
+      created += await insertPost(client, {
+        kind: "PULSE",
+        key: `pulse:${match.fixture_id}:${slot}`,
+        body: voice.line,
+        imageUrl: image,
+        imageMode: "fotografia_real",
+      });
     }
   } finally {
     await client.end();

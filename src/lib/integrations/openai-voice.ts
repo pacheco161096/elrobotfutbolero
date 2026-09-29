@@ -1,17 +1,19 @@
-import fs from "fs";
-import path from "path";
 import { acceptVoiceLine, type Draft } from "@/lib/engines/copy";
 import { acceptMomentLine } from "@/lib/engines/match-pulse";
+import { acceptBoardLine } from "@/lib/engines/scoreboard";
 import { acceptPageLine } from "@/lib/engines/page-voice";
+import { voiceInstructions } from "@/lib/engines/voice-brief";
 import { estimateUsd, recordAiUsage } from "@/lib/integrations/ai-cost";
+import { loadSpeechBlock } from "@/lib/integrations/speech-collect";
 
-let personalityDoc: string | null = null;
+export { voiceInstructions };
 
-function personality(): string {
-  if (!personalityDoc) {
-    personalityDoc = fs.readFileSync(path.join(process.cwd(), "docs/personalidad.md"), "utf8");
+async function ear(env: Record<string, string | undefined>): Promise<string> {
+  try {
+    return await loadSpeechBlock(env);
+  } catch {
+    return "";
   }
-  return personalityDoc;
 }
 
 export async function applyVoice(
@@ -20,6 +22,7 @@ export async function applyVoice(
   fetchImpl: typeof fetch = fetch,
 ): Promise<Draft> {
   if (!env.OPENAI_API_KEY || (!draft.personality && !draft.situation && draft.locked.length === 0)) return draft;
+  const speech = await ear(env);
   const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -32,7 +35,7 @@ export async function applyVoice(
       messages: [
         {
           role: "system",
-          content: `Eres El Robot Futbolero. Esta es tu única personalidad:\n\n${personality()}\n\nLas citas de ese documento son muestras de voz, no frases para copiar. Escribes una línea nueva para el momento que te pasan. No cambias el dato. No incluyes marcador ni un número de resultado. Si nombras un equipo, usa el nombre en español que ya viene en el momento. En México el apodo va primero. No uses el nombre en inglés. No repites las líneas fijas ni una publicación reciente. Respondes solo con esa línea.`,
+          content: voiceInstructions(speech, "Las citas de ese documento son muestras de voz, no frases para copiar. Escribes una línea nueva para el momento que te pasan. No cambias el dato. No incluyes marcador ni un número de resultado. Si nombras un equipo, usa el nombre en español que ya viene en el momento. En México el apodo va primero. No uses el nombre en inglés. No repites las líneas fijas ni una publicación reciente. Respondes solo con esa línea."),
         },
         {
           role: "user",
@@ -63,6 +66,7 @@ export async function reinterpretPage(
   fetchImpl: typeof fetch = fetch,
 ): Promise<string | null> {
   if (!env.OPENAI_API_KEY || !input.source.trim()) return null;
+  const speech = await ear(env);
   const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -75,7 +79,7 @@ export async function reinterpretPage(
       messages: [
         {
           role: "system",
-          content: `Eres El Robot Futbolero. Esta es tu única personalidad:\n\n${personality()}\n\nUna página ajena te pasó material. No es un dato confirmado. No copies el titular. No nombres la página ni uses su firma. No incluyas marcador. Si no hay un ángulo propio, respondes NADA. Si lo hay, respondes solo con una línea nueva.`,
+          content: voiceInstructions(speech, "Una página ajena te pasó material. No es un dato confirmado. No copies el titular. No nombres la página ni uses su firma. No incluyas marcador. Si no hay un ángulo propio, respondes NADA. Si lo hay, respondes solo con una línea nueva."),
         },
         {
           role: "user",
@@ -104,6 +108,7 @@ export async function writeMomentLine(
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ spoke: boolean; line: string | null }> {
   if (!env.OPENAI_API_KEY || !input.situation.trim()) return { spoke: false, line: null };
+  const speech = await ear(env);
   const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -116,7 +121,7 @@ export async function writeMomentLine(
       messages: [
         {
           role: "system",
-          content: `Eres El Robot Futbolero. Esta es tu única personalidad:\n\n${personality()}\n\nLas citas de ese documento son muestras de voz, no frases para copiar. Escribes una línea nueva para este partido y este minuto. No incluyas marcador, porcentajes ni ninguna cifra. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repitas una publicación reciente. Si la lectura no da para una línea, respondes NADA.`,
+          content: voiceInstructions(speech, "Las citas de ese documento son muestras de voz, no frases para copiar. Escribes una línea nueva para este partido y este minuto. No incluyas marcador, porcentajes ni ninguna cifra. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repitas una publicación reciente. Si la lectura no da para una línea, respondes NADA."),
         },
         {
           role: "user",
@@ -137,4 +142,53 @@ export async function writeMomentLine(
     await recordAiUsage({ area: "voz", model, promptTokens, completionTokens, usd: estimateUsd(model, promptTokens, completionTokens) }, env);
   }
   return { spoke: true, line: acceptMomentLine(body.choices?.[0]?.message?.content ?? "", input.avoid, input.minute) };
+}
+
+export async function writeBoardLine(
+  input: { situation: string; avoid: string[]; homeScore: number; awayScore: number },
+  env: Record<string, string | undefined> = process.env,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ spoke: boolean; line: string | null }> {
+  if (!env.OPENAI_API_KEY || !input.situation.trim()) return { spoke: false, line: null };
+  const speech = await ear(env);
+  const response = await fetchImpl("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: env.OPENAI_MODEL || "gpt-4o-mini",
+      temperature: 0.8,
+      messages: [
+        {
+          role: "system",
+          content: voiceInstructions(speech, "Las citas de ese documento son muestras de voz, no frases para copiar. Escribes una sola línea natural para este momento. El marcador que te pasan es el real: escríbelo igual, en la misma frase. No agregues otro número, ni un minuto, ni un récord. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repites una publicación reciente. Respondes solo con esa línea."),
+        },
+        {
+          role: "user",
+          content: `${input.situation}\n\nNo repitas estas publicaciones:\n${input.avoid.slice(0, 8).join("\n") || "(ninguna)"}`,
+        },
+      ],
+    }),
+  });
+  if (!response.ok) return { spoke: false, line: null };
+  const body = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  const model = env.OPENAI_MODEL || "gpt-4o-mini";
+  const promptTokens = body.usage?.prompt_tokens ?? 0;
+  const completionTokens = body.usage?.completion_tokens ?? 0;
+  if (promptTokens || completionTokens) {
+    await recordAiUsage({ area: "voz", model, promptTokens, completionTokens, usd: estimateUsd(model, promptTokens, completionTokens) }, env);
+  }
+  return {
+    spoke: true,
+    line: acceptBoardLine(body.choices?.[0]?.message?.content ?? "", {
+      homeScore: input.homeScore,
+      awayScore: input.awayScore,
+      avoid: input.avoid,
+    }),
+  };
 }

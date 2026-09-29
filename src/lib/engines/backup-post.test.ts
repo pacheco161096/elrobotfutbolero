@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backupImageQuery, backupLocked, backupSituation } from "@/lib/engines/backup-post";
+import { backupImageQuery, backupLocked, backupSituation, squadNotes } from "@/lib/engines/backup-post";
 
 const frattesi = {
   eventType: "GOAL",
@@ -36,5 +36,25 @@ describe("respaldo de la jugada", () => {
   it("la foto se busca con el jugador de la jugada", () => {
     expect(backupImageQuery(frattesi)).toBe("Davide Frattesi Türkiye Italy gol");
     expect(backupSituation(backupLocked(frattesi) ?? [])).toMatch(/no inventes un récord/);
+    expect(backupSituation(["Kean sigue en la banca."])).toMatch(/se espera mucho/);
+    expect(backupSituation(["Barella no está en la convocatoria de este partido."])).toMatch(/sin inventar el motivo/);
+  });
+
+  it("la banca y la ausencia salen de la alineación, no de un nombre inventado", () => {
+    const notes = squadNotes({
+      homeTeam: "Türkiye",
+      awayTeam: "Italy",
+      homeStarters: ["A. Güler"],
+      homeBench: [],
+      awayStarters: ["G. Donnarumma"],
+      awayBench: ["M. Kean", "G. Scamacca"],
+      focusTeam: "Italy",
+    });
+    expect(notes.onBench).toEqual(["Moise Kean"]);
+    expect(notes.notCalled).toEqual(["Nicolò Barella"]);
+    const locked = backupLocked({ ...frattesi, ...notes });
+    expect(locked?.join(" ")).toMatch(/Moise Kean sigue en la banca/);
+    expect(locked?.join(" ")).toMatch(/Nicolò Barella no está en la convocatoria/);
+    expect(locked?.join(" ")).not.toMatch(/Scamacca|Çalhanoğlu|Mbappé/);
   });
 });

@@ -1,5 +1,5 @@
 import pg from "pg";
-import { COVERED_LEAGUE_IDS, fetchFixtures, fetchStandings, type StandingRow, type StoredMatch } from "@/lib/integrations/api-football";
+import { COVERED_LEAGUE_IDS, fetchFixtures, fetchStandings, fetchTeamFixtures, MEXICO_MEN_TEAM_ID, type StandingRow, type StoredMatch } from "@/lib/integrations/api-football";
 import { syncWindow } from "@/lib/engines/match-state";
 
 const UPSERT = `
@@ -58,8 +58,23 @@ export async function syncLigaMx(env: Record<string, string | undefined> = proce
     if (fetched.error) errors.push(fetched.error);
     else matches.push(...fetched.matches);
   }
+  const mexico = await fetchTeamFixtures({
+    teamId: MEXICO_MEN_TEAM_ID,
+    ...window,
+    season,
+    key,
+    host: env.API_FOOTBALL_HOST,
+  });
+  if (mexico.error) errors.push(mexico.error);
+  else matches.push(...mexico.matches);
   if (!matches.length && errors.length) return { saved: 0, error: errors.join(" "), window };
-  const saved = await saveMatches(databaseUrl, matches);
+  const seen = new Set<string>();
+  const unique = matches.filter((match) => {
+    if (seen.has(match.fixtureId)) return false;
+    seen.add(match.fixtureId);
+    return true;
+  });
+  const saved = await saveMatches(databaseUrl, unique);
   return { saved, error: errors[0] ?? null, window };
 }
 

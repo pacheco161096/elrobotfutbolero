@@ -1,16 +1,34 @@
 import { mentionsMatch } from "@/lib/engines/context";
+import { contradictsScore } from "@/lib/engines/match-pulse";
 
 type ImageHit = { image?: string; title?: string; url?: string; width?: number };
+
+const BRANDED = /tudn|getty|shutterstock|alamy|dreamstime|istock|depositphotos|watermark|espn|fox\s?sports|sky\s?sports|mediotiempo|televisa|tv\s?azteca|marca\.com|\bas\.com|record\.mx|amistoso|friendly|broadcast|grafico|gráfico/;
 
 function rows(payload: unknown): ImageHit[] {
   if (!payload || typeof payload !== "object" || !Array.isArray((payload as { results?: unknown }).results)) return [];
   return (payload as { results: ImageHit[] }).results;
 }
 
-export function pickWebImage(payload: unknown, teams: string[], avoid?: string | null): string | null {
-  const usable = rows(payload).filter((item) => publicPhoto(item.image) && item.image !== avoid && (item.width == null || item.width >= 400));
-  const named = usable.find((item) => mentionsMatch(`${item.title ?? ""} ${item.url ?? ""}`, teams));
-  return (named ?? usable[0])?.image ?? null;
+function branded(item: ImageHit): boolean {
+  const text = `${item.title ?? ""} ${item.url ?? ""} ${item.image ?? ""}`.toLowerCase();
+  return BRANDED.test(text);
+}
+
+export function pickWebImage(
+  payload: unknown,
+  teams: string[],
+  avoid?: string | null,
+  score?: { home: number; away: number } | null,
+): string | null {
+  const usable = rows(payload).filter((item) => {
+    if (!publicPhoto(item.image) || item.image === avoid || branded(item)) return false;
+    if (item.width != null && item.width < 400) return false;
+    const caption = `${item.title ?? ""} ${item.url ?? ""}`;
+    if (score && contradictsScore(caption, score.home, score.away)) return false;
+    return mentionsMatch(caption, teams);
+  });
+  return usable[0]?.image ?? null;
 }
 
 function publicPhoto(url: string | undefined): url is string {
@@ -24,7 +42,7 @@ function publicPhoto(url: string | undefined): url is string {
 }
 
 export async function searchMatchImage(
-  input: { query: string; teams: string[]; avoid?: string | null },
+  input: { query: string; teams: string[]; avoid?: string | null; homeScore?: number | null; awayScore?: number | null },
   fetchImpl: typeof fetch = fetch,
 ): Promise<string | null> {
   const query = input.query.trim();
@@ -40,5 +58,6 @@ export async function searchMatchImage(
     { headers: { "User-Agent": "Mozilla/5.0", Referer: "https://duckduckgo.com/" } },
   );
   if (!images.ok) return null;
-  return pickWebImage(await images.json(), input.teams, input.avoid);
+  const score = input.homeScore == null || input.awayScore == null ? null : { home: input.homeScore, away: input.awayScore };
+  return pickWebImage(await images.json(), input.teams, input.avoid, score);
 }

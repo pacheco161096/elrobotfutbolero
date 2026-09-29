@@ -1,6 +1,6 @@
 import { reviewSocialHits } from "@/lib/engines/context";
 import { classifyTruth } from "@/lib/engines/truth";
-import { brightDataMissing, facebookPageUrls, pollSocialSearch, readSocialHits, triggerSocialSearch } from "@/lib/integrations/bright-data";
+import { brightDataMissing, facebookPageUrls, pollSocialSearch, readSocialHits, readSpeechHits, triggerSocialSearch } from "@/lib/integrations/bright-data";
 import { describe, expect, it, vi } from "vitest";
 
 describe("bright data", () => {
@@ -19,6 +19,23 @@ describe("bright data", () => {
     expect(facebookPageUrls("https://www.facebook.com/profile.php?id=61554706934513&sk=about")).toEqual([
       "https://www.facebook.com/profile.php?id=61554706934513",
     ]);
+    const speech = [
+      "https://www.facebook.com/Papi2748",
+      "https://www.facebook.com/iAchisAchis",
+      "https://www.facebook.com/Michoacaneando",
+      "https://www.facebook.com/loquenodigoenpersona",
+      "https://www.facebook.com/Elclubdelosex",
+      "https://www.facebook.com/Puroshuapangs",
+      "https://www.facebook.com/centennialsenaprietos",
+      "https://www.facebook.com/pendejxboy",
+      "https://www.facebook.com/fucxboxy",
+      "https://www.facebook.com/Joaquindlm686",
+      "https://www.facebook.com/Classroomemes",
+      "https://www.facebook.com/mepxge",
+      "https://www.facebook.com/profile.php?id=100089466317849",
+      "https://www.facebook.com/chuyin.frr",
+    ];
+    expect(facebookPageUrls(speech.join(","))).toEqual(speech);
     const result = await triggerSocialSearch(pages, {
       BRIGHT_DATA_API_KEY: "llave",
       BRIGHT_DATA_DATASET_ID: "gd_demo",
@@ -46,6 +63,23 @@ describe("bright data", () => {
       status: "ready",
       hits: [{ text: "Dicen que se fue la luz en el estadio.", url: "https://example.com/post", author: "Fanpage", imageUrl: null }],
     });
+  });
+
+  it("el habla guarda la imagen aunque el post no traiga texto", () => {
+    const payload = [
+      { post_image: "https://cdn.example/meme.jpg" },
+      { images: [{ url: "https://cdn.example/otro.png" }], post_text: "Esta frase sí viene escrita en el post de la página." },
+      { post_image: "https://www.facebook.com/photo.php", post_text: "Esta otra frase también viene escrita y no usa la foto de Facebook." },
+    ];
+    expect(readSocialHits(payload).map((hit) => hit.imageUrl)).toEqual([
+      "https://cdn.example/otro.png",
+      null,
+    ]);
+    expect(readSpeechHits(payload).map((hit) => hit.imageUrl)).toEqual([
+      "https://cdn.example/otro.png",
+      null,
+      "https://cdn.example/meme.jpg",
+    ]);
   });
 
   it("una mención pública no se vuelve un hecho", () => {

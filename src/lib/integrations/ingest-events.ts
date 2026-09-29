@@ -4,9 +4,10 @@ import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import type { IncomingEvent } from "@/lib/domain/types";
 import { runPipeline } from "@/lib/engines/pipeline";
 import { shouldFetchEvents } from "@/lib/cron/assess";
-import { applyVoice } from "@/lib/integrations/openai-voice";
-import { generateRobotImage } from "@/lib/integrations/robot-image";
+import { matchImageQuery } from "@/lib/engines/image-route";
 import { presentCard } from "@/lib/engines/visual";
+import { applyVoice } from "@/lib/integrations/openai-voice";
+import { searchMatchImage } from "@/lib/integrations/web-image";
 import { API_FOOTBALL_HOST, mapLiveEvent, type LiveEventInput } from "@/lib/integrations/api-football";
 
 export async function ingestPlayedEvents(env: Record<string, string | undefined> = process.env, now = new Date()): Promise<{ checked: number; stored: number }> {
@@ -96,9 +97,16 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
         const spoken = draft && draft.voice === "openai" && draft.personality ? draft.text : draft?.locked.join("\n") ?? "";
         if (draft && spoken.trim()) {
           const kind = result.decision === "PUBLISH_NOW" ? "FLASH" : "CONTEXT";
-          const robotImage = kind !== "FLASH" && result.visual.mode === "bot_generada"
-            ? await generateRobotImage(result.visual.expression, env)
+          const needsMatchPhoto = kind !== "FLASH" && mapped.eventType !== "HALFTIME";
+          const imageUrl = needsMatchPhoto && !getOverrides().pauseImages
+            ? await searchMatchImage({
+                query: matchImageQuery({ home: match.home_team, away: match.away_team, eventType: mapped.eventType }),
+                teams: [match.home_team, match.away_team, mapped.player ?? ""].filter(Boolean),
+                homeScore: match.home_score,
+                awayScore: match.away_score,
+              })
             : null;
+          if (needsMatchPhoto && !imageUrl) continue;
           await client.query(
             `INSERT INTO posts (story_id, event_id, kind, idempotency_key, body, facts, tone, image_mode, status, club, format)
              VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)
@@ -109,9 +117,9 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
               kind,
               result.idempotencyKey,
               presentCard(spoken.split("\n")),
-              JSON.stringify({ ...(result.flash?.facts ?? {}), imageUrl: robotImage }),
+              JSON.stringify({ ...(result.flash?.facts ?? {}), imageUrl }),
               result.tone,
-              robotImage ? "bot_generada" : "texto",
+              imageUrl ? "fotografia_real" : "texto",
               result.publication.status,
               mapped.team,
               "texto",

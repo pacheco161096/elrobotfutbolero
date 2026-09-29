@@ -8,7 +8,7 @@ import { teamSpoken } from "@/lib/engines/team-names";
 import { runPipeline } from "@/lib/engines/pipeline";
 import { storyKeyFor } from "@/lib/engines/story";
 import { classifyTruth } from "@/lib/engines/truth";
-import { coveredLiveFixturesUrl, fetchFixtures, fetchLiveFixtures, liveFixturesUrl, mapFixture, mapLiveEvent } from "@/lib/integrations/api-football";
+import { coveredLiveFixturesUrl, fetchFixtures, fetchLiveFixtures, liveFixturesUrl, mapFixture, mapLiveEvent, teamFixturesUrl } from "@/lib/integrations/api-football";
 import { presentMatch } from "@/lib/matches/present";
 import { FACEBOOK_BLACK_TEXT_PRESET, publishWithZernio, zernioPostBody } from "@/lib/integrations/gates";
 import { liveWorkerTick } from "@/lib/worker/tick";
@@ -63,6 +63,13 @@ describe("pipeline", () => {
     expect(result.decision).toBe("WAIT");
     expect(result.publication.status).toBe("not_requested");
     expect(result.flash?.valid).toBe(false);
+  });
+
+  it("publica el penal señalado y el penal fallado", () => {
+    const awarded = runPipeline(base({ eventType: "PENALTY", team: "Italia" }), { credentials: credentialsOff, overrides: emptyOverrides(), now });
+    expect(awarded.decision).toBe("PUBLISH_NOW");
+    const missed = runPipeline(base({ eventType: "MISSED_PENALTY", player: "Rossi", team: "Italia" }), { credentials: credentialsOff, overrides: emptyOverrides(), now });
+    expect(missed.decision).toBe("PUBLISH_NOW");
   });
 
   it("descarta la amarilla", () => {
@@ -300,13 +307,28 @@ describe("api football", () => {
           teams: { home: { name: "Belgium" }, away: { name: "France" } },
           goals: { home: 0, away: 0 },
         },
+        {
+          fixture: { id: 4, status: { short: "1H" } },
+          league: { id: 10, name: "Friendlies" },
+          teams: { home: { id: 16, name: "Mexico" }, away: { id: 27, name: "Portugal" } },
+          goals: { home: 0, away: 0 },
+        },
+        {
+          fixture: { id: 5, status: { short: "1H" } },
+          league: { id: 1040, name: "UEFA Women's Nations League" },
+          teams: { home: { id: 1729, name: "Mexico W" }, away: { id: 1, name: "USA W" } },
+          goals: { home: 0, away: 0 },
+        },
       ],
     })));
     const live = await fetchLiveFixtures({ key: "llave" }, fetchImpl);
     const call = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(String(call[0])).toBe("https://v3.football.api-sports.io/fixtures?live=all");
     expect(live.error).toBeNull();
-    expect(live.matches.map((match) => match.fixtureId)).toEqual(["2", "3"]);
+    expect(live.matches.map((match) => match.fixtureId)).toEqual(["2", "3", "4"]);
+    expect(teamFixturesUrl({ teamId: 16, from: "2026-09-27", to: "2026-10-01", season: 2026 })).toBe(
+      "https://v3.football.api-sports.io/fixtures?team=16&season=2026&from=2026-09-27&to=2026-10-01",
+    );
   });
 });
 

@@ -350,15 +350,16 @@ No explicar demasiado cuando el chiste funciona en pocas palabras.
 
 ---
 
-# 9. GROserías
+# 9. ORTOGRAFÍA Y GROSERÍAS
 
-Las groserías pueden entrar. Siempre se censuran, como lo haría una persona en Facebook para no perder la monetización.
+Se escribe con ortografía correcta. La única palabra que puede alterarse es una grosería, y solo para censurarla.
 
-Nunca se escribe la palabra completa.
+Las groserías pueden entrar. Siempre se censuran como una fanpage, para no perder la monetización: la primera vocal se cambia por un asterisco. Nunca se escribe la palabra completa. No se meten faltas para sonar natural.
 
 * m*erda
-* v*leron m*dre
-* c*b*n
+* v*lieron m*dre
+* p*ndejo
+* c*brón
 * m*mes
 
 Nunca deben ser el centro de la personalidad. Si el remate ya funciona sin ella, no hace falta meterla.

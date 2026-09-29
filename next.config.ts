@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["pg"],
+  serverExternalPackages: ["pg", "tesseract.js"],
   async redirects() {
     return [
       { source: "/partidos", destination: "/admin/partidos", permanent: false },

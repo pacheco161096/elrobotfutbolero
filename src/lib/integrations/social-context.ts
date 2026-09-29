@@ -1,13 +1,11 @@
 import pg from "pg";
 import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import { mentionsMatch, reviewSocialHits } from "@/lib/engines/context";
-import { pickExpression } from "@/lib/engines/copy";
-import { backupImageQuery, backupLocked, backupSituation, type BackupEvent } from "@/lib/engines/backup-post";
-import { imageRoute, matchImageQuery, memeScene } from "@/lib/engines/image-route";
+import { backupImageQuery, backupLocked, backupSituation, squadNotes, type BackupEvent } from "@/lib/engines/backup-post";
+import { matchImageQuery } from "@/lib/engines/image-route";
 import { teamSpoken } from "@/lib/engines/team-names";
 import { brightDataMissing, facebookPageUrls, pollSocialSearch, triggerSocialSearch } from "@/lib/integrations/bright-data";
 import { applyVoice, reinterpretPage } from "@/lib/integrations/openai-voice";
-import { generateRobotImage } from "@/lib/integrations/robot-image";
 import { searchMatchImage } from "@/lib/integrations/web-image";
 
 const CONTEXT_EVENTS = ["GOAL", "RED_CARD", "PENALTY", "MISSED_PENALTY", "VAR", "HALFTIME", "FULL_TIME", "SUSPENDED"];
@@ -127,6 +125,50 @@ function pickBackupRow(storyKey: string, rows: BackupRow[]): BackupRow | null {
   return null;
 }
 
+async function matchSquad(
+  fixtureId: string,
+  homeTeam: string,
+  awayTeam: string,
+  focusTeam: string | null,
+  env: Record<string, string | undefined>,
+  fetchImpl: typeof fetch,
+): Promise<{ onBench: string[]; notCalled: string[] }> {
+  const empty = { onBench: [], notCalled: [] };
+  const key = env.API_FOOTBALL_KEY;
+  if (!key) return empty;
+  const host = env.API_FOOTBALL_HOST || "v3.football.api-sports.io";
+  try {
+    const response = await fetchImpl(`https://${host}/fixtures/lineups?fixture=${encodeURIComponent(fixtureId)}`, {
+      headers: { "x-apisports-key": key },
+    });
+    if (!response.ok) return empty;
+    const body = await response.json() as {
+      response?: Array<{
+        team?: { name?: string };
+        startXI?: Array<{ player?: { name?: string } }>;
+        substitutes?: Array<{ player?: { name?: string } }>;
+      }>;
+    };
+    const names = (rows?: Array<{ player?: { name?: string } }>) =>
+      (rows ?? []).map((item) => item.player?.name).filter((name): name is string => Boolean(name));
+    const sheets = body.response ?? [];
+    const home = sheets.find((item) => item.team?.name === homeTeam) ?? sheets[0];
+    const away = sheets.find((item) => item.team?.name === awayTeam) ?? sheets[1];
+    if (!home || !away) return empty;
+    return squadNotes({
+      homeTeam,
+      awayTeam,
+      homeStarters: names(home.startXI),
+      homeBench: names(home.substitutes),
+      awayStarters: names(away.startXI),
+      awayBench: names(away.substitutes),
+      focusTeam,
+    });
+  } catch {
+    return empty;
+  }
+}
+
 async function queueBackup(
   client: pg.Client,
   candidate: Candidate,
@@ -149,6 +191,9 @@ async function queueBackup(
   const row = pickBackupRow(candidate.story_key, rows.rows);
   if (!row) return "skip";
   const event = eventFromRow(candidate.story_key, row);
+  const squad = await matchSquad(row.fixture_id, row.home_team, row.away_team, row.team, env, fetchImpl);
+  event.onBench = squad.onBench;
+  event.notCalled = squad.notCalled;
   const locked = backupLocked(event);
   const query = backupImageQuery(event);
   if (!locked || !query) return "skip";
@@ -171,6 +216,8 @@ async function queueBackup(
   const image = await searchMatchImage({
     query,
     teams: [event.player, event.homeTeam, event.awayTeam].filter((item): item is string => Boolean(item)),
+    homeScore: event.homeScore,
+    awayScore: event.awayScore,
   }, fetchImpl);
   if (!image) return "retry";
   await client.query(
@@ -259,22 +306,14 @@ export async function runSocialContext(
       }, env, fetchImpl);
       if (line) {
         await refreshOverrides(databaseUrl);
-        const route = imageRoute({ eventType: candidate.last_event_type, source: pick.text, line });
         const image = getOverrides().pauseImages
           ? null
-          : route === "buscar"
-            ? await searchMatchImage({
-                query: matchImageQuery({ home: candidate.home_team, away: candidate.away_team, eventType: candidate.last_event_type }),
-                teams: [candidate.home_team, candidate.away_team],
-                avoid: pick.imageUrl,
-              }, fetchImpl)
-            : await generateRobotImage(
-                pickExpression({ eventType: candidate.last_event_type, tone: "normal" }),
-                env,
-                fetchImpl,
-                memeScene(line),
-              );
-        await client.query(
+          : await searchMatchImage({
+              query: matchImageQuery({ home: candidate.home_team, away: candidate.away_team, eventType: candidate.last_event_type }),
+              teams: [candidate.home_team, candidate.away_team],
+              avoid: pick.imageUrl,
+            }, fetchImpl);
+        if (image) await client.query(
           `INSERT INTO posts (story_id, kind, idempotency_key, body, facts, tone, image_mode, status, format)
            VALUES ($1, 'CONTEXT', $2, $3, $4::jsonb, 'normal', $5, 'queued', 'texto')
            ON CONFLICT (idempotency_key) DO NOTHING`,
@@ -283,10 +322,10 @@ export async function runSocialContext(
             `context-post:${candidate.story_key}`,
             line,
             JSON.stringify({ imageUrl: image }),
-            image ? (route === "buscar" ? "fotografia_real" : "bot_generada") : "texto",
+            "fotografia_real",
           ],
         );
-        posted = true;
+        if (image) posted = true;
       }
     }
     if (!posted) return settleBackup(client, jobKey, await queueBackup(client, candidate, env, fetchImpl));

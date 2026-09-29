@@ -1,7 +1,3 @@
-const MATCH_ACTIONS = new Set(["GOAL", "RED_CARD", "PENALTY", "MISSED_PENALTY", "VAR"]);
-const JOKE = /\b(empate|recor|pensar|epoca|prest|mandaron|aburr|hueva|rey)\b/;
-const ACTION = /g+o+l+|autogol|penal|expuls|roja|\bvar\b/;
-
 function normalize(value: string): string {
   return value
     .toLowerCase()
@@ -12,14 +8,8 @@ function normalize(value: string): string {
     .trim();
 }
 
-export function imageRoute(input: { eventType: string; source: string; line: string }): "buscar" | "crear" {
-  const source = normalize(input.source);
-  const line = normalize(input.line);
-  const joke = JOKE.test(`${source} ${line}`) && !ACTION.test(line);
-  if (joke && (!MATCH_ACTIONS.has(input.eventType) || JOKE.test(source))) return "crear";
-  if (MATCH_ACTIONS.has(input.eventType) && ACTION.test(source)) return "buscar";
-  if (ACTION.test(line)) return "buscar";
-  return "crear";
+export function imageRoute(_input: { eventType: string; source: string; line: string }): "buscar" | "crear" {
+  return "buscar";
 }
 
 export function matchImageQuery(input: { home: string; away: string; eventType: string }): string {
@@ -28,12 +18,16 @@ export function matchImageQuery(input: { home: string; away: string; eventType: 
     input.eventType === "PENALTY" || input.eventType === "MISSED_PENALTY" ? "penal" :
     input.eventType === "VAR" ? "VAR" :
     "gol";
-  return `${input.home} vs ${input.away} ${action} Liga MX`;
+  return `${input.home} vs ${input.away} ${action}`;
 }
 
 export function memeScene(line: string): string {
-  const text = normalize(line);
-  if (text.includes("empate")) return "the robot staring at a scoreboard that just changed, surprised, no text, no crests, no real players";
-  if (text.includes("aburr") || text.includes("nadie")) return "the robot half asleep in front of a dark screen, still at the desk, no text, no crests";
-  return "the robot reacting to a football conversation, square green head, no text, no club crests, no real players";
+  return analysisScene({ goalCount: /aburr|nadie|lento|cerrad|sin goles/.test(normalize(line)) ? 0 : 2, line });
+}
+
+export function analysisScene(input: { goalCount: number; line: string }): string {
+  const text = normalize(input.line);
+  const quiet = input.goalCount === 0 || /aburr|nadie|lento|cerrad|sin goles|empate/.test(text);
+  if (quiet) return "the robot half asleep at the desk, bored, chin on one hand, a dull football match on a dark screen, no text, no crests, no real players";
+  return "the robot leaning forward, amused, reacting to a lively football match on a dark screen, no text, no club crests, no real players";
 }

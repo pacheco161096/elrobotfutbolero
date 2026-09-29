@@ -16,6 +16,8 @@ export type BackupEvent = {
   awayScore: number | null;
   goalNumber: number | null;
   storyKey: string;
+  onBench?: string[];
+  notCalled?: string[];
 };
 
 function ordinal(n: number): string {
@@ -58,6 +60,8 @@ export function backupLocked(event: BackupEvent): string[] | null {
     const away = teamSpoken(event.awayTeam, `${event.storyKey}:away`);
     lines.push(`En esa jugada quedó ${home} ${event.homeScore}-${event.awayScore} ${away}.`);
   }
+  for (const name of event.onBench ?? []) lines.push(`${name} sigue en la banca. Se espera verlo y todavía no entra.`);
+  for (const name of event.notCalled ?? []) lines.push(`${name} no está en la convocatoria de este partido.`);
   return lines;
 }
 
@@ -71,6 +75,66 @@ export function backupImageQuery(event: BackupEvent): string | null {
   return [event.player, event.homeTeam, event.awayTeam, action].filter(Boolean).join(" ");
 }
 
+const WATCHED: Array<{ team: string; names: string[] }> = [
+  { team: "italia", names: ["Nicolò Barella", "Moise Kean", "Gianluca Scamacca"] },
+  { team: "francia", names: ["Kylian Mbappé", "Ousmane Dembélé"] },
+  { team: "belgica", names: ["Romelu Lukaku"] },
+  { team: "turquia", names: ["Hakan Çalhanoğlu"] },
+];
+
+function plain(value: string): string {
+  return value.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "");
+}
+
+function lastName(value: string): string {
+  const parts = plain(value).split(/[^a-z]+/).filter(Boolean);
+  return parts.at(-1) ?? "";
+}
+
+function teamKey(name: string): string | null {
+  const text = plain(name);
+  if (text.includes("ital")) return "italia";
+  if (text.includes("fran")) return "francia";
+  if (text.includes("belg")) return "belgica";
+  if (text.includes("tur")) return "turquia";
+  return null;
+}
+
+export function squadNotes(input: {
+  homeTeam: string;
+  awayTeam: string;
+  homeStarters: string[];
+  homeBench: string[];
+  awayStarters: string[];
+  awayBench: string[];
+  focusTeam?: string | null;
+}): { onBench: string[]; notCalled: string[] } {
+  const sides = [
+    { team: input.homeTeam, starters: input.homeStarters, bench: input.homeBench },
+    { team: input.awayTeam, starters: input.awayStarters, bench: input.awayBench },
+  ].sort((left, right) => {
+    const focus = teamKey(input.focusTeam ?? "");
+    const rank = (team: string) => teamKey(team) === focus ? 0 : 1;
+    return rank(left.team) - rank(right.team);
+  });
+  const onBench: string[] = [];
+  const notCalled: string[] = [];
+  for (const side of sides) {
+    const key = teamKey(side.team);
+    const watched = WATCHED.find((item) => item.team === key);
+    if (!watched) continue;
+    const starters = new Set(side.starters.map(lastName));
+    const bench = new Set(side.bench.map(lastName));
+    for (const name of watched.names) {
+      const token = lastName(name);
+      if (!token || starters.has(token)) continue;
+      if (bench.has(token) && onBench.length === 0) onBench.push(name);
+      if (!bench.has(token) && notCalled.length === 0) notCalled.push(name);
+    }
+  }
+  return { onBench, notCalled };
+}
+
 export function backupSituation(locked: string[]): string {
-  return `Respaldo de la jugada. El dato ya está en las líneas fijas y no se toca. Escribe una sola línea con la voz del robot. No repitas el dato, no pongas marcador ni cifras, no inventes un récord ni un "gol número". Si nombras un equipo, usa el español de estas líneas:\n${locked.join("\n")}`;
+  return `Respaldo de la jugada. El dato ya está en las líneas fijas y no se toca. Escribe una sola línea con la voz del robot. No repitas el dato, no pongas marcador ni cifras, no inventes un récord ni un "gol número". Si una línea dice que alguien sigue en la banca, puedes decir que es una estrella, que se espera mucho de él y que todavía no entra. Si una línea dice que alguien no está en la convocatoria de este partido, puedes decirlo, sin inventar el motivo. No menciones un jugador que no esté escrito abajo. Si nombras un equipo, usa el español de estas líneas:\n${locked.join("\n")}`;
 }

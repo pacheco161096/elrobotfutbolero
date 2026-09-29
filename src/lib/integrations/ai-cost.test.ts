@@ -8,12 +8,15 @@ describe("costo y pieza visual", () => {
     expect(estimateUsd("gpt-4o-mini", 1_000_000, 1_000_000)).toBeCloseTo(0.75);
     expect(estimateUsd("modelo-raro", 10, 10)).toBeNull();
     expect(imageUsd("dall-e-3")).toBe(0.04);
+    expect(imageUsd("gpt-image-1-mini")).toBe(0.02);
   });
 
   it("el flash no lleva imagen y el segundo post sí, si hay una", () => {
     expect(imageForPost("FLASH", "https://cdn.example/gol.jpg", false)).toBeNull();
     expect(imageForPost("PREVIA", "https://cdn.example/gol.jpg", false)).toBeNull();
     expect(imageForPost("KICKOFF", "https://cdn.example/gol.jpg", false)).toBeNull();
+    expect(imageForPost("HALFTIME", "https://cdn.example/partido.jpg", false)).toBeNull();
+    expect(imageForPost("FULL_TIME", "https://cdn.example/partido.jpg", false)).toBe("https://cdn.example/partido.jpg");
     expect(imageForPost("CONTEXT", "https://cdn.example/gol.jpg", false)).toBe("https://cdn.example/gol.jpg");
     expect(imageForPost("CONTEXT", "https://cdn.example/gol.jpg", true)).toBeNull();
   });

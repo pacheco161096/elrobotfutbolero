@@ -218,6 +218,17 @@ CREATE TABLE IF NOT EXISTS ai_usage (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS speech_notes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind text NOT NULL,
+  body text NOT NULL,
+  fingerprint text NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS speech_notes_expires_idx ON speech_notes (expires_at);
+
 CREATE TABLE IF NOT EXISTS blacklist_rules (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   rule_type text NOT NULL,

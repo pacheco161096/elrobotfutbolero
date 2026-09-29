@@ -10,6 +10,7 @@ const PER_MILLION: Record<string, { input: number; output: number }> = {
 
 const IMAGE_USD: Record<string, number> = {
   "dall-e-3": 0.04,
+  "gpt-image-1-mini": 0.02,
 };
 
 export function estimateUsd(model: string, promptTokens: number, completionTokens: number): number | null {

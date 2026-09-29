@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { acceptVoiceLine, composeDraft, voiceFits } from "@/lib/engines/copy";
 import { teamSpoken } from "@/lib/engines/team-names";
 import { buildFlash } from "@/lib/engines/flash";
-import { applyVoice } from "@/lib/integrations/openai-voice";
+import { interpretInstructions } from "@/lib/engines/voice-brief";
+import { applyVoice, voiceInstructions } from "@/lib/integrations/openai-voice";
 
 const draft = composeDraft({
   eventType: "GOAL",
@@ -18,6 +19,16 @@ describe("voz", () => {
     expect(next.locked.join("\n")).toBe(draft.locked.join("\n"));
     expect(next.text.startsWith(draft.locked.join("\n"))).toBe(true);
     expect(next.personality).not.toMatch(/\d+\s*-\s*\d+/);
+  });
+
+  it("si el modelo repite el dato fijo, esa frase no se publica", () => {
+    const next = acceptVoiceLine(draft, "Entre el minuto 9 y el 27, Italia metió tres goles. ¿Y ahora qué?");
+    const repeated = acceptVoiceLine({
+      ...draft,
+      locked: ["Entre el minuto 9 y el 27, Italia metió tres goles.", "Ahora van Turquía 0-3 Italia."],
+    }, "Entre el 9 y el 27, Italia metió tres goles. ¿Y ahora qué?");
+    expect(next.voice).toBe("openai");
+    expect(repeated.voice).toBe("plantilla");
   });
 
   it("si el modelo mete el marcador, esa frase no se publica", () => {
@@ -106,6 +117,23 @@ describe("voz", () => {
       recentPosts: [],
     }, null);
     expect(ownGoal.lockedLines[0]).toBe("Autogol de Francisco Nevarez.");
+  });
+
+  it("el habla afina la voz y no obliga a usar la tendencia", () => {
+    const withEar = voiceInstructions("Cómo se habla:\n- Cierran la queja con un neta.", "No cambias el dato.");
+    const without = voiceInstructions("", "No cambias el dato.");
+    expect(withEar).toContain("BOT DE FÚTBOL MEXICANO");
+    expect(withEar).toContain("REGLA DE ORO");
+    expect(withEar).not.toContain("SISTEMA OPERATIVO DE DECISIÓN");
+    expect(withEar).toContain("obligatorio tomarlo en cuenta al interpretar");
+    expect(withEar).toContain("Cierran la queja con un neta.");
+    expect(withEar).toContain("Ortografía correcta");
+    expect(withEar.indexOf("No cambias el dato.")).toBeGreaterThan(withEar.indexOf("Cierran la queja"));
+    expect(without).toContain("BOT DE FÚTBOL MEXICANO");
+    expect(without).toContain("Diccionario de frases y tendencias");
+    expect(without).toContain("Todavía no hay frases");
+    expect(voiceInstructions("Cierran la queja con un pendejo.", "No cambias el dato.")).toContain("con un p*ndejo");
+    expect(interpretInstructions("", "Interpretas.")).toContain("SISTEMA OPERATIVO DE DECISIÓN");
   });
 
   it("no llama a OpenAI si no hay nada que decir", async () => {

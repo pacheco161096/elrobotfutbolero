@@ -2,9 +2,10 @@ import pg from "pg";
 import { assessSchedule, inconsistentFindings, type ScheduledFixture } from "@/lib/cron/assess";
 import { watchdogFindings, type MatchStatus, type WatchdogFinding } from "@/lib/engines/match-state";
 import { ingestPlayedEvents } from "@/lib/integrations/ingest-events";
-import { runHalftimePosts, runQuietPosts } from "@/lib/integrations/pulse-posts";
-import { publishReadyPosts, runKickoffPosts, runPreMatchPosts } from "@/lib/integrations/publish";
+import { runFullTimePosts, runHalftimePosts } from "@/lib/integrations/pulse-posts";
+import { publishReadyPosts } from "@/lib/integrations/publish";
 import { runSocialContext } from "@/lib/integrations/social-context";
+import { runSpeech } from "@/lib/integrations/speech-collect";
 import { refreshOverrides } from "@/lib/control/overrides";
 import { syncLigaMx, syncStandings } from "@/lib/integrations/sync-matches";
 
@@ -17,6 +18,15 @@ async function withClient<T>(databaseUrl: string, run: (client: pg.Client) => Pr
     return await run(client);
   } finally {
     await client.end();
+  }
+}
+
+async function resumeSpeech(env: Env, now: Date): Promise<string> {
+  try {
+    const speech = await runSpeech(env, now, fetch, "resume");
+    return speech.status;
+  } catch {
+    return "error";
   }
 }
 
@@ -76,15 +86,17 @@ export async function runFootballEngine(env: Env = process.env, now = new Date()
           return result.rowCount ?? 0;
         })
       : 0;
-    const previa = await runPreMatchPosts(env, now);
-    const kickoff = await runKickoffPosts(env);
+    const halftime = await runHalftimePosts(env);
+    const fulltime = await runFullTimePosts(env);
     const published = await publishReadyPosts(env);
-    await writeLog(databaseUrl, "info", "football-engine", "Nada en juego. No consulté API-Football.", { preMatch: updated, previa, kickoff, published });
-    return { preMatch: updated, refreshed: false, saved: 0, checked: 0, stored: 0, previa, published, error: null };
+    const speech = await resumeSpeech(env, now);
+    await writeLog(databaseUrl, "info", "football-engine", "Nada en juego. No consulté API-Football.", { preMatch: updated, halftime, fulltime, published, speech });
+    return { preMatch: updated, refreshed: false, saved: 0, checked: 0, stored: 0, published, error: null };
   }
   const synced = await syncLigaMx(env, now);
   if (synced.error) {
-    await writeLog(databaseUrl, "error", "football-engine", synced.error, { window: synced.window });
+    const speech = await resumeSpeech(env, now);
+    await writeLog(databaseUrl, "error", "football-engine", synced.error, { window: synced.window, speech });
     return { preMatch: 0, refreshed: false, saved: 0, checked: 0, stored: 0, error: synced.error };
   }
   const events = await ingestPlayedEvents(env);
@@ -95,23 +107,21 @@ export async function runFootballEngine(env: Env = process.env, now = new Date()
     const raw = error instanceof Error ? error.message : "";
     context = { status: "error", checked: 0, message: raw && !/postgres:|bearer|api_key/i.test(raw) ? raw : "Bright Data falló." };
   }
-  const previa = await runPreMatchPosts(env, now);
-  const kickoff = await runKickoffPosts(env);
   const halftime = await runHalftimePosts(env);
-  const quiet = await runQuietPosts(env);
+  const fulltime = await runFullTimePosts(env);
   const published = await publishReadyPosts(env);
+  const speech = await resumeSpeech(env, now);
   await writeLog(databaseUrl, context.status === "error" ? "error" : "info", "football-engine", "Revisé los partidos que ya deberían haber empezado.", {
     saved: synced.saved,
     checked: events.checked,
     stored: events.stored,
     context: context.status,
-    previa,
-    kickoff,
     halftime,
-    quiet,
+    fulltime,
     published,
+    speech,
   });
-  return { preMatch: 0, refreshed: true, saved: synced.saved, checked: events.checked, stored: events.stored, context, previa, published, error: null };
+  return { preMatch: 0, refreshed: true, saved: synced.saved, checked: events.checked, stored: events.stored, context, published, error: null };
 }
 
 export async function runWatchdog(env: Env = process.env, now = new Date()): Promise<{ findings: WatchdogFinding[]; error: string | null }> {

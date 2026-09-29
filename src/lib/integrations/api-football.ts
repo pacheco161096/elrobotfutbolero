@@ -3,6 +3,7 @@ import { statusFromApi, type MatchStatus } from "@/lib/engines/match-state";
 export const API_FOOTBALL_HOST = "v3.football.api-sports.io";
 export const LIGA_MX_LEAGUE_ID = 262;
 export const UEFA_NATIONS_LEAGUE_ID = 5;
+export const MEXICO_MEN_TEAM_ID = 16;
 export const COVERED_LEAGUE_IDS = [LIGA_MX_LEAGUE_ID, UEFA_NATIONS_LEAGUE_ID] as const;
 
 export type StoredMatch = {
@@ -21,7 +22,7 @@ export type StoredMatch = {
 type FixturePayload = {
   fixture?: { id?: number; date?: string; status?: { short?: string; elapsed?: number | null } };
   league?: { id?: number; name?: string; season?: number };
-  teams?: { home?: { name?: string }; away?: { name?: string } };
+  teams?: { home?: { id?: number; name?: string }; away?: { id?: number; name?: string } };
   goals?: { home?: number | null; away?: number | null };
 };
 
@@ -48,6 +49,16 @@ export function mapFixture(raw: FixturePayload, now: Date): StoredMatch | null {
   };
 }
 
+export function isMexicoMenFixture(raw: FixturePayload): boolean {
+  return raw.teams?.home?.id === MEXICO_MEN_TEAM_ID || raw.teams?.away?.id === MEXICO_MEN_TEAM_ID;
+}
+
+export function coversFixture(raw: FixturePayload): boolean {
+  const leagueId = raw.league?.id;
+  if (leagueId != null && (COVERED_LEAGUE_IDS as readonly number[]).includes(leagueId)) return true;
+  return isMexicoMenFixture(raw);
+}
+
 export function fixturesUrl(input: { from: string; to: string; season: number; leagueId?: number }, host = API_FOOTBALL_HOST): string {
   const params = new URLSearchParams({
     league: String(input.leagueId ?? LIGA_MX_LEAGUE_ID),
@@ -66,6 +77,26 @@ async function readFixtures(url: string, key: string, fetchImpl: typeof fetch): 
   if (!response.ok || errorText) return { matches: [], error: errorText || `HTTP ${response.status}` };
   const now = new Date();
   return { matches: (body.response ?? []).map((item) => mapFixture(item, now)).filter((item): item is StoredMatch => Boolean(item)), error: null };
+}
+
+export function teamFixturesUrl(
+  input: { teamId: number; from: string; to: string; season: number },
+  host = API_FOOTBALL_HOST,
+): string {
+  const params = new URLSearchParams({
+    team: String(input.teamId),
+    season: String(input.season),
+    from: input.from,
+    to: input.to,
+  });
+  return `https://${host}/fixtures?${params.toString()}`;
+}
+
+export async function fetchTeamFixtures(
+  input: { teamId: number; from: string; to: string; season: number; key: string; host?: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ matches: StoredMatch[]; error: string | null }> {
+  return readFixtures(teamFixturesUrl(input, input.host), input.key, fetchImpl);
 }
 
 export async function fetchFixtures(
@@ -162,7 +193,9 @@ export async function fetchLiveFixtures(
   return {
     ...result,
     matches: result.matches.filter((match) => {
-      const id = (match.raw as FixturePayload).league?.id;
+      const raw = match.raw as FixturePayload;
+      if (isMexicoMenFixture(raw)) return true;
+      const id = raw.league?.id;
       return id != null && allowed.has(id);
     }),
   };

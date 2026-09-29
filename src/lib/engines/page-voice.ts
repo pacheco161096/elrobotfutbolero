@@ -1,3 +1,5 @@
+import { censorSwears } from "@/lib/engines/censor";
+
 const SCORE = /\d+\s*[-–]\s*\d+/;
 const GENERIC = new Set(["futbol", "total", "mexico", "deportes", "noticias", "oficial", "facebook", "pagina", "page", "sport", "sports", "publicacion", "publica"]);
 
@@ -33,9 +35,9 @@ export function copiesPage(line: string, source: string): boolean {
 }
 
 export function acceptPageLine(source: string, author: string, raw: string): string | null {
-  const line = raw.trim().replace(/^["“]|["”]$/g, "");
-  if (!line || /^nada\.?$/i.test(line) || line.includes("\n")) return null;
-  if (line.length > 220 || SCORE.test(line)) return null;
-  if (namesPage(line, author) || copiesPage(line, source)) return null;
-  return line;
+  const spoken = raw.trim().replace(/^["“]|["”]$/g, "");
+  if (!spoken || /^nada\.?$/i.test(spoken) || spoken.includes("\n")) return null;
+  if (spoken.length > 220 || SCORE.test(spoken)) return null;
+  if (namesPage(spoken, author) || copiesPage(spoken, source)) return null;
+  return censorSwears(spoken);
 }

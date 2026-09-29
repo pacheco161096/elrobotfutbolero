@@ -4,22 +4,65 @@ const BRIGHT_DATA_ORIGIN = "https://api.brightdata.com";
 const PAGE_LIMIT = 20;
 const TEXT_FIELDS = ["post_text", "text", "content", "description", "caption", "title"] as const;
 const AUTHOR_FIELDS = ["user_name", "author", "page_name", "username"] as const;
-const IMAGE_FIELDS = ["post_image", "image", "thumbnail_url"] as const;
+const IMAGE_FIELDS = ["post_image", "image", "image_url", "photo_url", "picture", "thumbnail_url"] as const;
+const IMAGE_LISTS = ["images", "photos", "media"] as const;
 const URL_FIELDS = ["url", "post_url", "link"] as const;
+
+function imageUrlOf(value: unknown): string | null {
+  const raw = typeof value === "string"
+    ? value
+    : value && typeof value === "object" && typeof (value as { url?: unknown }).url === "string"
+      ? (value as { url: string }).url
+      : null;
+  if (!raw || !raw.startsWith("https://")) return null;
+  try {
+    const host = new URL(raw).hostname;
+    if (host === "facebook.com" || host === "www.facebook.com") return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
 
 function imageFrom(record: Record<string, unknown>): string | null {
   for (const key of IMAGE_FIELDS) {
-    const value = record[key];
-    if (typeof value !== "string" || !value.startsWith("https://")) continue;
-    try {
-      const host = new URL(value).hostname;
-      if (host === "facebook.com" || host === "www.facebook.com") continue;
-      return value;
-    } catch {
-      continue;
+    const found = imageUrlOf(record[key]);
+    if (found) return found;
+  }
+  for (const key of IMAGE_LISTS) {
+    const list = record[key];
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      const found = imageUrlOf(item);
+      if (found) return found;
     }
   }
   return null;
+}
+
+function rowsFrom(payload: unknown): Record<string, unknown>[] {
+  const rows = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === "object" && Array.isArray((payload as { data?: unknown }).data)
+      ? (payload as { data: unknown[] }).data
+      : [];
+  return rows.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object");
+}
+
+function textFrom(record: Record<string, unknown>): string | null {
+  const text = TEXT_FIELDS.map((key) => record[key]).find((value) => typeof value === "string" && value.trim().length >= 12);
+  return typeof text === "string" ? text.trim().slice(0, 500) : null;
+}
+
+function hitFrom(record: Record<string, unknown>, text: string, imageUrl: string | null): SocialHit {
+  const author = AUTHOR_FIELDS.map((key) => record[key]).find((value) => typeof value === "string" && value.trim());
+  const url = URL_FIELDS.map((key) => record[key]).find((value) => typeof value === "string" && value.startsWith("http"));
+  return {
+    text,
+    url: typeof url === "string" ? url : null,
+    author: typeof author === "string" ? author.trim().slice(0, 120) : null,
+    imageUrl,
+  };
 }
 
 export function facebookPageUrls(raw: string | undefined): string[] {
@@ -58,30 +101,31 @@ export function brightDataMissing(env: Record<string, string | undefined>): stri
   return missing;
 }
 
-export function readSocialHits(payload: unknown): SocialHit[] {
-  const rows = Array.isArray(payload)
-    ? payload
-    : payload && typeof payload === "object" && Array.isArray((payload as { data?: unknown }).data)
-      ? (payload as { data: unknown[] }).data
-      : [];
+export function readSocialHits(payload: unknown, limit = 8): SocialHit[] {
   const hits: SocialHit[] = [];
-  for (const row of rows) {
-    if (!row || typeof row !== "object") continue;
-    const record = row as Record<string, unknown>;
+  for (const record of rowsFrom(payload)) {
     if (typeof record.error === "string") continue;
-    const text = TEXT_FIELDS.map((key) => record[key]).find((value) => typeof value === "string" && value.trim().length >= 12);
-    if (typeof text !== "string") continue;
-    const author = AUTHOR_FIELDS.map((key) => record[key]).find((value) => typeof value === "string" && value.trim());
-    const url = URL_FIELDS.map((key) => record[key]).find((value) => typeof value === "string" && value.startsWith("http"));
-    hits.push({
-      text: text.trim().slice(0, 500),
-      url: typeof url === "string" ? url : null,
-      author: typeof author === "string" ? author.trim().slice(0, 120) : null,
-      imageUrl: imageFrom(record),
-    });
-    if (hits.length >= 8) break;
+    const text = textFrom(record);
+    if (!text) continue;
+    hits.push(hitFrom(record, text, imageFrom(record)));
+    if (hits.length >= limit) break;
   }
   return hits;
+}
+
+export function readSpeechHits(payload: unknown, limit = 16, imageLimit = 4): SocialHit[] {
+  const hits: SocialHit[] = [];
+  const images: SocialHit[] = [];
+  for (const record of rowsFrom(payload)) {
+    if (typeof record.error === "string") continue;
+    const text = textFrom(record);
+    const imageUrl = imageFrom(record);
+    if (text && hits.length < limit) hits.push(hitFrom(record, text, imageUrl));
+    if (imageUrl && images.length < imageLimit && !hits.some((hit) => hit.imageUrl === imageUrl) && !images.some((hit) => hit.imageUrl === imageUrl)) {
+      images.push(hitFrom(record, text ?? "", imageUrl));
+    }
+  }
+  return [...hits, ...images];
 }
 
 async function brightFetch(
@@ -108,7 +152,7 @@ export async function triggerSocialSearch(
   fetchImpl: typeof fetch = fetch,
   postsPerPage = 3,
 ): Promise<{ status: "pending_credentials"; missing: string[] } | { status: "triggered"; snapshotId: string } | { status: "error"; message: string }> {
-  const missing = brightDataMissing(env);
+  const missing = brightDataMissing(env).filter((name) => name !== "BRIGHT_DATA_PAGE_URLS");
   if (missing.length) return { status: "pending_credentials", missing };
   const pages = facebookPageUrls(urls.join(","));
   if (!pages.length) return { status: "error", message: "No hay fanpages de Facebook para consultar." };
@@ -128,6 +172,8 @@ export async function pollSocialSearch(
   snapshotId: string,
   env: Record<string, string | undefined>,
   fetchImpl: typeof fetch = fetch,
+  limit = 8,
+  speech = false,
 ): Promise<{ status: "pending" } | { status: "ready"; hits: SocialHit[] } | { status: "error"; message: string }> {
   if (!env.BRIGHT_DATA_API_KEY) return { status: "error", message: "Faltan credenciales de Bright Data." };
   const progress = await brightFetch(`/datasets/v3/progress/${encodeURIComponent(snapshotId)}`, env, { method: "GET" }, fetchImpl);
@@ -138,5 +184,5 @@ export async function pollSocialSearch(
   if (state !== "ready") return { status: "pending" };
   const snapshot = await brightFetch(`/datasets/v3/snapshot/${encodeURIComponent(snapshotId)}?format=json`, env, { method: "GET" }, fetchImpl);
   if (!snapshot.ok) return { status: "error", message: `Bright Data no entregó el resultado (${snapshot.status}).` };
-  return { status: "ready", hits: readSocialHits(snapshot.body) };
+  return { status: "ready", hits: speech ? readSpeechHits(snapshot.body, limit) : readSocialHits(snapshot.body, limit) };
 }
