@@ -80,7 +80,7 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
         `SELECT id, minute, player, team, payload FROM match_events WHERE fixture_id = $1 AND event_type = 'GOAL'`,
         [match.fixture_id],
       );
-      const stored: StoredGoal[] = storedGoals.rows.flatMap((row) => {
+      const knownGoals: StoredGoal[] = storedGoals.rows.flatMap((row) => {
         const playerId = playerIdOf(row.payload);
         if (playerId == null) return [];
         const extra = row.payload && typeof row.payload === "object" ? (row.payload as { time?: { extra?: number | null } }).time?.extra ?? null : null;
@@ -92,7 +92,7 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
         list.push(entry.goal);
         incomingByPlayer.set(entry.goal.playerId, list);
       }
-      const plan = reconcileGoals(stored, namedGoals.map((entry) => entry.goal));
+      const plan = reconcileGoals(knownGoals, namedGoals.map((entry) => entry.goal));
       for (const change of plan.update) {
         const source = namedGoals.find((entry) => entry.goal === change.goal);
         if (!source) continue;
