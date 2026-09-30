@@ -103,6 +103,7 @@ async function runBoardPosts(
       const counted = goals.rows.filter((goal) => phase === "final" || goal.minute == null || goal.minute < 46);
       const names = boardNames(match.fixture_id, phase, match.home_team, match.away_team);
       const voice = await writeBoardLine({
+        phase,
         situation: boardSituation({
           phase,
           home: names.home,

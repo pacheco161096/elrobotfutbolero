@@ -145,7 +145,7 @@ export async function writeMomentLine(
 }
 
 export async function writeBoardLine(
-  input: { situation: string; avoid: string[]; homeScore: number; awayScore: number },
+  input: { phase?: "medio" | "final"; situation: string; avoid: string[]; homeScore: number; awayScore: number },
   env: Record<string, string | undefined> = process.env,
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ spoke: boolean; line: string | null }> {
@@ -163,7 +163,9 @@ export async function writeBoardLine(
       messages: [
         {
           role: "system",
-          content: voiceInstructions(speech, "Las citas de la personalidad son muestras, no frases para copiar. Escribes la publicación completa en una sola frase, dicha de corrido. Los nombres y el marcador van dentro de esa frase, con tu voz: usa el diccionario y, si hay tendencia, dóblala a este momento. El marcador que te pasan es el real: escríbelo igual. No lo dejes como ficha y luego un comentario. No agregues otro número, ni un minuto, ni un récord. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repitas una publicación reciente ni abras con las mismas palabras. Respondes solo con esa frase."),
+          content: voiceInstructions(speech, input.phase === "medio"
+            ? "Las citas de la personalidad son muestras, no frases para copiar. Escribes la publicación completa en una sola frase, dicha de corrido. Es el descanso: el partido sigue y falta el segundo tiempo. No digas que alguien ganó, que hubo victoria, campeón, ni que ya piensan en el siguiente partido. Los nombres y el marcador van dentro de esa frase, con tu voz: usa el diccionario y, si hay tendencia, dóblala a este momento. El marcador que te pasan es el real: escríbelo igual. No lo dejes como ficha y luego un comentario. No agregues otro número, ni un minuto, ni un récord. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repitas una publicación reciente ni abras con las mismas palabras. Respondes solo con esa frase."
+            : "Las citas de la personalidad son muestras, no frases para copiar. Escribes la publicación completa en una sola frase, dicha de corrido. Es el final: ahí sí puedes cerrar el partido y decir quién ganó. Los nombres y el marcador van dentro de esa frase, con tu voz: usa el diccionario y, si hay tendencia, dóblala a este momento. El marcador que te pasan es el real: escríbelo igual. No lo dejes como ficha y luego un comentario. No agregues otro número, ni un minuto, ni un récord. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repitas una publicación reciente ni abras con las mismas palabras. Respondes solo con esa frase."),
         },
         {
           role: "user",
@@ -186,6 +188,7 @@ export async function writeBoardLine(
   return {
     spoke: true,
     line: acceptBoardLine(body.choices?.[0]?.message?.content ?? "", {
+      phase: input.phase,
       homeScore: input.homeScore,
       awayScore: input.awayScore,
       avoid: input.avoid,

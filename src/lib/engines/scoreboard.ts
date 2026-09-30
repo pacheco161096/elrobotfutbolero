@@ -14,6 +14,17 @@ function outcome(home: string, away: string, homeScore: number, awayScore: numbe
   return homeScore > awayScore ? `Ganó ${home}.` : `Ganó ${away}.`;
 }
 
+function scoreRead(phase: "medio" | "final", goalCount: number): string {
+  if (phase === "medio") {
+    if (goalCount === 0) return "Todavía no hay goles.";
+    if (goalCount === 1) return "Va un solo gol.";
+    return "Ya van varios goles.";
+  }
+  if (goalCount === 0) return "No hubo goles: partido cerrado.";
+  if (goalCount === 1) return "Hubo un solo gol.";
+  return "Hubo varios goles: el partido se abrió.";
+}
+
 export function boardSituation(input: {
   phase: "medio" | "final";
   home: string;
@@ -23,18 +34,16 @@ export function boardSituation(input: {
   goalCount: number;
 }): string {
   const moment = input.phase === "medio" ? "descanso" : "cierre";
-  const read = input.goalCount === 0
-    ? "No hubo goles: partido cerrado."
-    : input.goalCount === 1
-      ? "Hubo un solo gol."
-      : "Hubo varios goles: el partido se abrió.";
+  const standing = input.phase === "medio"
+    ? "El marcador va así. Todavía falta el segundo tiempo."
+    : outcome(input.home, input.away, input.homeScore, input.awayScore);
   return [
     `Hechos del ${moment}.`,
     `Local: ${input.home}.`,
     `Visita: ${input.away}.`,
     `Marcador, escríbelo tal cual: ${input.homeScore}-${input.awayScore}.`,
-    outcome(input.home, input.away, input.homeScore, input.awayScore),
-    read,
+    standing,
+    scoreRead(input.phase, input.goalCount),
     "Una sola publicación, dicha de corrido, con tu voz. Los dos nombres y ese marcador van dentro de la frase, no como ficha suelta. No uses otro número. Nómbralos así, en español. No abras igual que una publicación reciente.",
   ].join(" ");
 }
@@ -55,10 +64,28 @@ function sameOpening(line: string, previous: string): boolean {
   return next.length > 0 && next === used;
 }
 
-export function acceptBoardLine(raw: string, input: { homeScore: number; awayScore: number; avoid: string[] }): string | null {
+const HALFTIME_CLOSED = [
+  "se acabo el partido",
+  "victoria",
+  "campeon",
+  "siguiente partido",
+  "partido cerrado",
+  "se llevo",
+  "se quedo con las ganas",
+];
+
+function closesTheMatch(line: string): boolean {
+  const spoken = spokenWords(line);
+  if (HALFTIME_CLOSED.some((phrase) => spoken.includes(phrase))) return true;
+  const words = spoken.split(" ");
+  return words.includes("gano") || words.includes("empate");
+}
+
+export function acceptBoardLine(raw: string, input: { phase?: "medio" | "final"; homeScore: number; awayScore: number; avoid: string[] }): string | null {
   const line = censorSwears(raw).trim().replace(/^["“]|["”]$/g, "");
   if (!line || /^nada\.?$/i.test(line) || line.includes("\n") || line.length > 240) return null;
   if (spokenWords(line).includes("se acabo el partido")) return null;
+  if ((input.phase ?? "final") === "medio" && closesTheMatch(line)) return null;
   if (!new RegExp(`(^|\\D)${input.homeScore}\\s*[-–]\\s*${input.awayScore}(\\D|$)`).test(line)) return null;
   if (contradictsScore(line, input.homeScore, input.awayScore)) return null;
   const pool = [String(input.homeScore), String(input.awayScore)];
