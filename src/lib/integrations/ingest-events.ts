@@ -8,7 +8,33 @@ import { matchImageQuery } from "@/lib/engines/image-route";
 import { presentCard } from "@/lib/engines/visual";
 import { applyVoice } from "@/lib/integrations/openai-voice";
 import { searchMatchImage } from "@/lib/integrations/web-image";
+import { goalKey, reconcileGoals, type StoredGoal, type TrackedGoal } from "@/lib/engines/goal-reconcile";
 import { API_FOOTBALL_HOST, mapLiveEvent, type LiveEventInput } from "@/lib/integrations/api-football";
+
+function playerIdOf(payload: unknown): number | null {
+  if (!payload || typeof payload !== "object") return null;
+  const id = (payload as { player?: { id?: unknown } }).player?.id;
+  return typeof id === "number" ? id : null;
+}
+
+function isGoalItem(item: LiveEventInput): boolean {
+  const type = (item.type ?? "").toLowerCase();
+  const detail = (item.detail ?? "").toLowerCase();
+  return type === "goal" && !detail.includes("missed penalty");
+}
+
+function readGoal(item: LiveEventInput): TrackedGoal | null {
+  const playerId = item.player?.id;
+  if (playerId == null) return null;
+  return {
+    playerId,
+    minute: item.time?.elapsed ?? null,
+    extra: item.time?.extra ?? null,
+    player: item.player?.name ?? null,
+    team: item.team?.name ?? null,
+    detail: item.detail ?? null,
+  };
+}
 
 export async function ingestPlayedEvents(env: Record<string, string | undefined> = process.env, now = new Date()): Promise<{ checked: number; stored: number }> {
   const key = env.API_FOOTBALL_KEY;
@@ -44,9 +70,64 @@ export async function ingestPlayedEvents(env: Record<string, string | undefined>
         headers: { "x-apisports-key": key },
       });
       const body = (await response.json()) as { response?: LiveEventInput[] };
-      for (const item of body.response ?? []) {
-        const mapped = mapLiveEvent({ ...item, fixtureId: match.fixture_id, homeTeam: match.home_team, awayTeam: match.away_team, homeScore: match.home_score, awayScore: match.away_score });
-        if (!mapped) continue;
+      const items = (body.response ?? []).map((item) => ({ ...item, fixtureId: match.fixture_id, homeTeam: match.home_team, awayTeam: match.away_team, homeScore: match.home_score, awayScore: match.away_score }));
+      const namedGoals = items.flatMap((item) => {
+        if (!isGoalItem(item)) return [];
+        const goal = readGoal(item);
+        return goal ? [{ goal, item }] : [];
+      });
+      const storedGoals = await client.query<{ id: string; minute: number | null; player: string | null; team: string | null; payload: unknown }>(
+        `SELECT id, minute, player, team, payload FROM match_events WHERE fixture_id = $1 AND event_type = 'GOAL'`,
+        [match.fixture_id],
+      );
+      const stored: StoredGoal[] = storedGoals.rows.flatMap((row) => {
+        const playerId = playerIdOf(row.payload);
+        if (playerId == null) return [];
+        const extra = row.payload && typeof row.payload === "object" ? (row.payload as { time?: { extra?: number | null } }).time?.extra ?? null : null;
+        return [{ id: row.id, playerId, minute: row.minute, extra, player: row.player, team: row.team, detail: null }];
+      });
+      const incomingByPlayer = new Map<number, TrackedGoal[]>();
+      for (const entry of namedGoals) {
+        const list = incomingByPlayer.get(entry.goal.playerId) ?? [];
+        list.push(entry.goal);
+        incomingByPlayer.set(entry.goal.playerId, list);
+      }
+      const plan = reconcileGoals(stored, namedGoals.map((entry) => entry.goal));
+      for (const change of plan.update) {
+        const source = namedGoals.find((entry) => entry.goal === change.goal);
+        if (!source) continue;
+        await client.query(
+          `UPDATE match_events SET minute = $2, player = $3, team = $4, payload = $5::jsonb WHERE id = $1`,
+          [change.id, change.goal.minute, change.goal.player, change.goal.team, JSON.stringify(source.item)],
+        );
+      }
+      const freshGoals = plan.insert.flatMap((goal) => {
+        const list = incomingByPlayer.get(goal.playerId) ?? [];
+        const ordered = [...list].sort((left, right) => (left.minute ?? 0) * 100 + (left.extra ?? 0) - ((right.minute ?? 0) * 100 + (right.extra ?? 0)));
+        const source = namedGoals.find((entry) => entry.goal === goal);
+        if (!source) return [];
+        return [{ goal, index: ordered.indexOf(goal), item: source.item }];
+      });
+      const queue: Array<{ item: LiveEventInput; mapped: NonNullable<ReturnType<typeof mapLiveEvent>> }> = [];
+      for (const item of items) {
+        if (isGoalItem(item)) continue;
+        const mapped = mapLiveEvent(item);
+        if (mapped) queue.push({ item, mapped });
+      }
+      for (const fresh of freshGoals) {
+        queue.push({
+          item: fresh.item,
+          mapped: {
+            eventType: "GOAL",
+            minute: fresh.goal.minute,
+            player: fresh.goal.player,
+            team: fresh.goal.team,
+            detail: fresh.goal.detail,
+            idempotencyKey: goalKey(match.fixture_id, fresh.goal, fresh.index),
+          },
+        });
+      }
+      for (const { item, mapped } of queue) {
         const inserted = await client.query(
           `INSERT INTO match_events (fixture_id, idempotency_key, event_type, minute, player, team, home_score, away_score, payload)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)

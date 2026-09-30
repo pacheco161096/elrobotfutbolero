@@ -1,3 +1,5 @@
+import { NATIONAL_TEAMS } from "@/lib/engines/national-teams";
+import { markImage } from "@/lib/engines/team-marks";
 import { teamOfficial, teamSpoken } from "@/lib/engines/team-names";
 import { describe, expect, it } from "vitest";
 
@@ -39,5 +41,15 @@ describe("nombres de equipos", () => {
   it("el nombre oficial en español no depende del sorteo", () => {
     expect(teamOfficial("FC Juarez")).toBe("Juárez");
     expect(teamOfficial("U.N.A.M. - Pumas")).toBe("Pumas");
+  });
+
+  it("cada selección varonil tiene nombre en español, clave y bandera", () => {
+    expect(NATIONAL_TEAMS.length).toBeGreaterThanOrEqual(211);
+    expect(teamOfficial("Peru")).toBe("Perú");
+    expect(teamSpoken("Peru", "partido")).toBe("Perú");
+    expect(markImage("Peru", null)).toMatchObject({ code: "PER", kind: "bandera", url: "https://flagcdn.com/w320/pe.png" });
+    expect(markImage("Cape Verde Islands", null)?.code).toBe("CPV");
+    expect(markImage("Curaçao", null)?.code).toBe("CUW");
+    expect(teamOfficial("America")).toBe("América");
   });
 });

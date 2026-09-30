@@ -207,9 +207,9 @@ export type LiveEventInput = {
   awayTeam: string;
   homeScore: number | null;
   awayScore: number | null;
-  time?: { elapsed?: number | null };
+  time?: { elapsed?: number | null; extra?: number | null };
   team?: { name?: string };
-  player?: { name?: string };
+  player?: { id?: number | null; name?: string };
   type?: string;
   detail?: string;
 };
