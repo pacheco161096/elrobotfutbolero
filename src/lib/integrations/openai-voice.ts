@@ -163,7 +163,7 @@ export async function writeBoardLine(
       messages: [
         {
           role: "system",
-          content: voiceInstructions(speech, "Las citas de la personalidad son muestras, no frases para copiar. Escribes una sola línea. Esa línea es tu voz: usa el diccionario y, si hay tendencia, dóblala a este momento. El marcador que te pasan es el real: escríbelo igual, en la misma frase. No agregues otro número, ni un minuto, ni un récord. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repites una publicación reciente. Respondes solo con esa línea."),
+          content: voiceInstructions(speech, "Las citas de la personalidad son muestras, no frases para copiar. Escribes la publicación completa en una sola frase, dicha de corrido. Los nombres y el marcador van dentro de esa frase, con tu voz: usa el diccionario y, si hay tendencia, dóblala a este momento. El marcador que te pasan es el real: escríbelo igual. No lo dejes como ficha y luego un comentario. No agregues otro número, ni un minuto, ni un récord. Si nombras un equipo, usa el nombre en español del momento. En México el apodo va primero. No uses el nombre en inglés. No repitas una publicación reciente ni abras con las mismas palabras. Respondes solo con esa frase."),
         },
         {
           role: "user",

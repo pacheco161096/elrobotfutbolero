@@ -2,6 +2,7 @@ import pg from "pg";
 import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import { mentionsMatch } from "@/lib/engines/context";
 import { contradictsScore, openMomentSituation, pulseSituation, quietSlot, readPulse } from "@/lib/engines/match-pulse";
+import { buildScoreCard, logoFromRaw, scoreCardUrl } from "@/lib/engines/score-card";
 import { boardNames, boardSituation } from "@/lib/engines/scoreboard";
 import { teamSpoken } from "@/lib/engines/team-names";
 import { brightDataMissing, facebookPageUrls, pollSocialSearch, triggerSocialSearch } from "@/lib/integrations/bright-data";
@@ -47,7 +48,7 @@ async function hasRelevantEvent(client: pg.Client, fixtureId: string): Promise<b
 
 async function insertPost(
   client: pg.Client,
-  input: { kind: string; key: string; body: string; imageUrl?: string | null; imageMode?: string },
+  input: { kind: string; key: string; body: string; imageUrl?: string | null; imageMode?: string; facts?: Record<string, unknown> },
 ): Promise<number> {
   const inserted = await client.query(
     `INSERT INTO posts (kind, idempotency_key, body, facts, tone, image_mode, status, format)
@@ -57,7 +58,7 @@ async function insertPost(
       input.kind,
       input.key,
       input.body,
-      JSON.stringify({ imageUrl: input.imageUrl ?? null }),
+      JSON.stringify({ imageUrl: input.imageUrl ?? null, ...(input.facts ?? {}) }),
       input.imageUrl ? (input.imageMode ?? "bot_generada") : "texto",
     ],
   );
@@ -93,8 +94,10 @@ async function runBoardPosts(
              AND NOT EXISTS (SELECT 1 FROM posts p WHERE p.idempotency_key = 'fulltime:' || matches.fixture_id)`,
     );
     for (const match of matches.rows) {
-      const goals = await client.query<{ minute: number | null }>(
-        `SELECT minute, player, team FROM match_events WHERE fixture_id = $1 AND event_type = 'GOAL'`,
+      const goals = await client.query<{ minute: number | null; player: string | null; team: string | null; detail: string | null }>(
+        `SELECT minute, player, team, payload->>'detail' AS detail
+         FROM match_events WHERE fixture_id = $1 AND event_type = 'GOAL'
+         ORDER BY minute NULLS LAST, created_at`,
         [match.fixture_id],
       );
       const counted = goals.rows.filter((goal) => phase === "final" || goal.minute == null || goal.minute < 46);
@@ -122,6 +125,18 @@ async function runBoardPosts(
         continue;
       }
       if (overrides.pauseImages) continue;
+      const stored = await client.query<{ raw: unknown }>(`SELECT raw FROM matches WHERE fixture_id = $1`, [match.fixture_id]);
+      const card = buildScoreCard({
+        homeTeam: match.home_team,
+        awayTeam: match.away_team,
+        homeScore: match.home_score,
+        awayScore: match.away_score,
+        homeLogo: logoFromRaw(stored.rows[0]?.raw, "home"),
+        awayLogo: logoFromRaw(stored.rows[0]?.raw, "away"),
+        goals: goals.rows,
+      });
+      const cardUrl = card ? scoreCardUrl(match.fixture_id, env) : null;
+      if (!card || !cardUrl) continue;
       const image = await searchMatchImage({
         query: `${match.home_team} vs ${match.away_team} partido`,
         teams: [match.home_team, match.away_team],
@@ -133,8 +148,9 @@ async function runBoardPosts(
         kind: "FULL_TIME",
         key: `fulltime:${match.fixture_id}`,
         body: voice.line,
-        imageUrl: image,
-        imageMode: "fotografia_real",
+        imageUrl: cardUrl,
+        imageMode: "marcador",
+        facts: { backgroundUrl: image },
       });
     }
   } finally {

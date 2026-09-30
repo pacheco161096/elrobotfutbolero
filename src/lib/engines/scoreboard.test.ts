@@ -16,8 +16,31 @@ describe("aviso de medio tiempo y final", () => {
     expect(acceptBoardLine("Partido cerrado, nos vamos al descanso.", { homeScore: 0, awayScore: 0, avoid: [] })).toBeNull();
   });
 
-  it("el medio tiempo pide el marcador dentro de la frase", () => {
-    expect(boardSituation({ phase: "medio", home: "Bélgica", away: "Francia", homeScore: 0, awayScore: 0, goalCount: 0 })).toMatch(/0-0/);
-    expect(boardSituation({ phase: "final", home: "Turquía", away: "Italia", homeScore: 1, awayScore: 4, goalCount: 5 })).toMatch(/se abrió/);
+  it("rechaza el arranque fijo y una apertura ya usada", () => {
+    expect(acceptBoardLine("España le puso un 4-1 a Croacia y se fue a celebrar. 🤖", {
+      homeScore: 4,
+      awayScore: 1,
+      avoid: [],
+    })).toMatch(/4-1/);
+    expect(acceptBoardLine("Se acabó el partido. España 4-1 Croacia. Croacia se fue con las manos vacías. 🤖", {
+      homeScore: 4,
+      awayScore: 1,
+      avoid: [],
+    })).toBeNull();
+    expect(acceptBoardLine("España le puso un 4-1 a Croacia, otra vez. 🤖", {
+      homeScore: 4,
+      awayScore: 1,
+      avoid: ["España le puso un 4-1 a Croacia y se fue a celebrar. 🤖"],
+    })).toBeNull();
+  });
+
+  it("el cierre entrega hechos, no una frase para copiar", () => {
+    const medio = boardSituation({ phase: "medio", home: "Bélgica", away: "Francia", homeScore: 0, awayScore: 0, goalCount: 0 });
+    const final = boardSituation({ phase: "final", home: "Turquía", away: "Italia", homeScore: 1, awayScore: 4, goalCount: 5 });
+    expect(medio).toMatch(/0-0/);
+    expect(medio).toMatch(/Empate/);
+    expect(final).toMatch(/se abrió/);
+    expect(final).toMatch(/Ganó Italia/);
+    expect(final).not.toMatch(/Se acabó el partido/);
   });
 });

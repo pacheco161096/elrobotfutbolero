@@ -2,7 +2,7 @@ import pg from "pg";
 import { assessSchedule, inconsistentFindings, type ScheduledFixture } from "@/lib/cron/assess";
 import { watchdogFindings, type MatchStatus, type WatchdogFinding } from "@/lib/engines/match-state";
 import { ingestPlayedEvents } from "@/lib/integrations/ingest-events";
-import { runFullTimePosts, runHalftimePosts } from "@/lib/integrations/pulse-posts";
+import { runFullTimePosts, runHalftimePosts, runQuietPosts } from "@/lib/integrations/pulse-posts";
 import { publishReadyPosts } from "@/lib/integrations/publish";
 import { runSocialContext } from "@/lib/integrations/social-context";
 import { runSpeech } from "@/lib/integrations/speech-collect";
@@ -88,7 +88,7 @@ export async function runFootballEngine(env: Env = process.env, now = new Date()
       : 0;
     const halftime = await runHalftimePosts(env);
     const fulltime = await runFullTimePosts(env);
-    const published = await publishReadyPosts(env);
+    const published = await publishReadyPosts(env, fetch, { perMatchHalf: true });
     const speech = await resumeSpeech(env, now);
     await writeLog(databaseUrl, "info", "football-engine", "Nada en juego. No consulté API-Football.", { preMatch: updated, halftime, fulltime, published, speech });
     return { preMatch: updated, refreshed: false, saved: 0, checked: 0, stored: 0, published, error: null };
@@ -107,21 +107,23 @@ export async function runFootballEngine(env: Env = process.env, now = new Date()
     const raw = error instanceof Error ? error.message : "";
     context = { status: "error", checked: 0, message: raw && !/postgres:|bearer|api_key/i.test(raw) ? raw : "Bright Data falló." };
   }
+  const quiet = await runQuietPosts(env);
   const halftime = await runHalftimePosts(env);
   const fulltime = await runFullTimePosts(env);
-  const published = await publishReadyPosts(env);
+  const published = await publishReadyPosts(env, fetch, { perMatchHalf: true });
   const speech = await resumeSpeech(env, now);
   await writeLog(databaseUrl, context.status === "error" ? "error" : "info", "football-engine", "Revisé los partidos que ya deberían haber empezado.", {
     saved: synced.saved,
     checked: events.checked,
     stored: events.stored,
     context: context.status,
+    quiet,
     halftime,
     fulltime,
     published,
     speech,
   });
-  return { preMatch: 0, refreshed: true, saved: synced.saved, checked: events.checked, stored: events.stored, context, published, error: null };
+  return { preMatch: 0, refreshed: true, saved: synced.saved, checked: events.checked, stored: events.stored, context, quiet, published, error: null };
 }
 
 export async function runWatchdog(env: Env = process.env, now = new Date()): Promise<{ findings: WatchdogFinding[]; error: string | null }> {

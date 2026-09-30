@@ -1,6 +1,7 @@
 import pg from "pg";
 import { getOverrides, refreshOverrides } from "@/lib/control/overrides";
 import { mentionsMatch, reviewSocialHits } from "@/lib/engines/context";
+import { sharedTopic } from "@/lib/engines/cron-budget";
 import { backupImageQuery, backupLocked, backupSituation, squadNotes, type BackupEvent } from "@/lib/engines/backup-post";
 import { matchImageQuery } from "@/lib/engines/image-route";
 import { teamSpoken } from "@/lib/engines/team-names";
@@ -295,7 +296,9 @@ export async function runSocialContext(
     }
     const review = reviewSocialHits({ known: await knownClaims(client, candidate.story_id, candidate.title), hits: polled.hits });
     await saveReview(client, candidate.story_id, review);
-    const related = review.claims.filter((claim) => mentionsMatch(claim.text, [candidate.home_team, candidate.away_team]));
+    const teams = [candidate.home_team, candidate.away_team];
+    const consensus = sharedTopic(polled.hits.filter((hit) => mentionsMatch(hit.text, teams)));
+    const related = review.claims.filter((claim) => mentionsMatch(claim.text, teams));
     const pick = related[0];
     let posted = false;
     if (pick) {
@@ -321,7 +324,7 @@ export async function runSocialContext(
             candidate.story_id,
             `context-post:${candidate.story_key}`,
             line,
-            JSON.stringify({ imageUrl: image }),
+            JSON.stringify({ imageUrl: image, consensus }),
             "fotografia_real",
           ],
         );
